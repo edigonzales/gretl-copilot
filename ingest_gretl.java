@@ -260,14 +260,28 @@ public class ingest_gretl {
       }
     }
 
-    List<String> links = new ArrayList<>();
+    String baseUrl = stripFragment(url);
+    Set<String> unique = new LinkedHashSet<>();
     for (Element a : doc.select("a[href]")) {
       String href = a.attr("abs:href");
-      if (isAllowed(href) && (!isReference(href) || isAllowedAnchor(href))) {
-        links.add(href);
-      }
+      if (isBlank(href)) continue;
+
+      String normalized = stripFragment(href);
+      if (!isAllowed(normalized)) continue;
+      if (normalized.equals(baseUrl)) continue;
+
+      // Skip looping over task anchors on the reference page – sections are
+      // already processed when the parent document is ingested.
+      if (isReference(baseUrl) && href.startsWith(baseUrl + "#")) continue;
+
+      unique.add(normalized);
     }
-    return links;
+    return new ArrayList<>(unique);
+  }
+
+  static String stripFragment(String url) {
+    int idx = url.indexOf('#');
+    return idx >= 0 ? url.substring(0, idx) : url;
   }
 
   static org.jsoup.nodes.Document fetchDocument(String location) throws Exception {
