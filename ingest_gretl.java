@@ -11,6 +11,9 @@ import org.jsoup.nodes.*;
 import org.jsoup.select.Elements;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.util.*;
 import java.util.regex.Pattern;
@@ -31,6 +34,9 @@ public class ingest_gretl {
   static final String JDBC_USER = env("JDBC_USER", "gretl");
   static final String JDBC_PASS = env("JDBC_PASS", "gretl");
   static final String ROOT      = env("ROOT", "https://gretl.app");
+  static final String USER_AGENT = env("USER_AGENT",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+      "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
 
   // pgvector dimension; must match your table definition
   static final int    EMB_DIM   = Integer.parseInt(env("EMB_DIM", "1536"));
@@ -119,7 +125,7 @@ public class ingest_gretl {
         require(inputFile.exists(), "Input file not found: " + inputPath);
         String baseUrl = inputFile.toURI().toString();
         try {
-          org.jsoup.nodes.Document doc = Jsoup.parse(inputFile, "UTF-8", baseUrl);
+          org.jsoup.nodes.Document doc = parseLocalFile(inputFile, baseUrl);
           processDocument(doc, baseUrl, cx);
           if (cx != null) cx.commit();
           System.out.println("Ingested: " + baseUrl);
@@ -130,7 +136,7 @@ public class ingest_gretl {
       } else {
         Queue<String> q = new ArrayDeque<>();
         Set<String> seen = new HashSet<>();
-        String startUrl = (startUrlOverride != null && !startUrlOverride.isBlank()) ? startUrlOverride : ROOT + "/reference.html";
+        String startUrl = determineStartUrl(startUrlOverride);
         q.add(startUrl);
 
         while (!q.isEmpty()) {
@@ -139,7 +145,7 @@ public class ingest_gretl {
           seen.add(url);
 
           try {
-            org.jsoup.nodes.Document doc = Jsoup.connect(url).timeout(30_000).get();
+            org.jsoup.nodes.Document doc = fetchDocument(url);
             List<String> discovered = processDocument(doc, url, cx);
             for (String href : discovered) {
               if (!seen.contains(href)) {
@@ -262,6 +268,70 @@ public class ingest_gretl {
       }
     }
     return links;
+  }
+
+  static org.jsoup.nodes.Document fetchDocument(String location) throws Exception {
+    if (location.startsWith("file:")) {
+      File file = new File(java.net.URI.create(location));
+      return parseLocalFile(file, location);
+    }
+
+    if (location.startsWith("http://") || location.startsWith("https://")) {
+      Request request = new Request.Builder()
+          .url(location)
+          .header("User-Agent", USER_AGENT)
+          .header("Accept", "text/html,application/xhtml+xml")
+          .build();
+      try (Response resp = http.newCall(request).execute()) {
+        if (!resp.isSuccessful() || resp.body() == null) {
+          String body = resp.body() != null ? resp.body().string() : "";
+          throw new RuntimeException("Failed to download " + location + ": " + resp.code() + " " + body);
+        }
+
+        byte[] bytes = resp.body().bytes();
+        Path temp = Files.createTempFile("gretl-ref-", ".html");
+        try (FileOutputStream fos = new FileOutputStream(temp.toFile())) {
+          fos.write(bytes);
+        }
+        temp.toFile().deleteOnExit();
+        return parseLocalFile(temp.toFile(), location);
+      }
+    }
+
+    File maybeFile = new File(location);
+    if (maybeFile.exists()) {
+      return parseLocalFile(maybeFile, maybeFile.toURI().toString());
+    }
+
+    throw new IllegalArgumentException("Unsupported location: " + location);
+  }
+
+  static org.jsoup.nodes.Document parseLocalFile(File inputFile, String baseUrl) throws Exception {
+    return Jsoup.parse(inputFile, "UTF-8", baseUrl);
+  }
+
+  static String determineStartUrl(String override) {
+    if (override == null || override.isBlank()) {
+      return ROOT + "/reference.html";
+    }
+
+    File local = new File(override);
+    if (local.exists()) {
+      return local.toURI().toString();
+    }
+
+    if (override.startsWith("file:")) {
+      return override;
+    }
+
+    if (!override.contains("://")) {
+      if (override.startsWith("/")) {
+        return ROOT + override;
+      }
+      return ROOT + "/" + override;
+    }
+
+    return override;
   }
 
   // ------------------------ Reset helper ------------------------------------
