@@ -10,6 +10,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.*;
 import org.jsoup.select.Elements;
 
+import java.io.File;
 import java.sql.DriverManager;
 import java.util.*;
 import java.util.regex.Pattern;
@@ -40,6 +41,10 @@ public class ingest_gretl {
   static final String OPENAI_EMB_MODEL = env("OPENAI_EMBED_MODEL", "text-embedding-3-small"); // 1536-d
   static final int    OPENAI_TIMEOUT_S = Integer.parseInt(env("OPENAI_TIMEOUT_S", "60"));
 
+  // Feature toggles (env defaults, overridable via CLI flags)
+  static boolean dbEnabled     = Boolean.parseBoolean(env("ENABLE_DB", "true"));
+  static boolean openaiEnabled = Boolean.parseBoolean(env("ENABLE_OPENAI", "true"));
+
   // --- HARDCODED WHITELIST --------------------------------------------------
   static final List<Pattern> ALLOWLIST = List.of(
       Pattern.compile("^https://gretl\\.app/reference\\.html(#.*)?$")
@@ -57,122 +62,211 @@ public class ingest_gretl {
   static final ObjectMapper mapper = new ObjectMapper();
 
   public static void main(String[] args) throws Exception {
-    require(!OPENAI_API_KEY.isBlank(), "OPENAI_API_KEY is required");
+    String inputPath = option(args, "--input", "--file");
+    String startUrlOverride = option(args, "--start-url", "--url");
+
+    boolean disableDbFlag = hasFlag(args, "--no-db");
+    boolean forceDbFlag = hasFlag(args, "--db");
+    if (disableDbFlag) dbEnabled = false;
+    if (forceDbFlag) dbEnabled = true;
+
+    boolean disableOpenaiFlag = hasFlag(args, "--no-openai", "--no-embeddings");
+    boolean forceOpenaiFlag = hasFlag(args, "--openai", "--embeddings");
+    if (disableOpenaiFlag) openaiEnabled = false;
+    if (forceOpenaiFlag) openaiEnabled = true;
+
+    boolean apiKeyPresent = !OPENAI_API_KEY.isBlank();
+    boolean openaiNoticePrinted = false;
+    if (openaiEnabled && !apiKeyPresent) {
+      if (forceOpenaiFlag) {
+        require(false, "OPENAI_API_KEY is required when embeddings are enabled");
+      } else {
+        openaiEnabled = false;
+        openaiNoticePrinted = true;
+        System.out.println("⚠️  OPENAI_API_KEY not set – disabling embeddings (vectors will be zeroed).");
+      }
+    }
+
+    if (openaiEnabled) {
+      require(apiKeyPresent, "OPENAI_API_KEY is required when embeddings are enabled");
+    } else if (!openaiNoticePrinted) {
+      System.out.println("⚠️  Running without OpenAI embeddings (vectors will be zeroed).");
+    }
+
+    if (!dbEnabled) {
+      System.out.println("⚠️  Database writes disabled – results will be printed only.");
+    }
 
     boolean doReset = hasFlag(args, "--reset", "-r");
 
-    Queue<String> q = new ArrayDeque<>();
-    Set<String> seen = new HashSet<>();
-    q.add(ROOT + "/reference.html");
-
-    try (java.sql.Connection cx = DriverManager.getConnection(JDBC_URL, JDBC_USER, JDBC_PASS)) {
-      cx.setAutoCommit(false);
-
-      if (doReset) {
-        resetDatabase(cx);
-        cx.commit();
-        System.out.println("✅ Database content wiped (fresh start).");
+    try (java.sql.Connection cx = dbEnabled ? DriverManager.getConnection(JDBC_URL, JDBC_USER, JDBC_PASS) : null) {
+      if (cx != null) {
+        cx.setAutoCommit(false);
       }
 
-      while (!q.isEmpty()) {
-        String url = q.poll();
-        if (seen.contains(url) || !isAllowed(url)) continue;
-        seen.add(url);
-
-        try {
-          org.jsoup.nodes.Document doc = Jsoup.connect(url).timeout(30_000).get();
-          Element main = Optional.ofNullable(doc.selectFirst("main, .md-content, .content, article"))
-                                 .orElse(doc.body());
-          String title = doc.title();
-          String pageMd = main.text(); // simple archive; swap to HTML→MD if you want
-
-          long pageId = upsertPage(cx, url, title, pageMd);
-
-          // Sections by H2/H3
-          for (Element h : main.select("h2, h3")) {
-            String heading = norm(h.text());
-            String anchor = h.id();
-            String sectionUrl = (anchor != null && !anchor.isEmpty()) ? url + "#" + anchor : url;
-
-            if (isReference(url) && anchor != null && !anchor.isEmpty() && !isAllowedAnchor(sectionUrl)) {
-              continue;
-            }
-
-            // Collect nodes until next h2/h3
-            List<Node> nodes = new ArrayList<>();
-            for (Node sib = h.nextSibling(); sib != null; sib = sib.nextSibling()) {
-              if (sib instanceof Element) {
-                String tag = ((Element) sib).tagName();
-                if ("h2".equals(tag) || "h3".equals(tag)) break;
-              }
-              nodes.add(sib);
-            }
-            String sectionHtml = nodes.stream().map(Node::outerHtml).collect(Collectors.joining());
-            String sectionText = Jsoup.parse(sectionHtml).text();
-
-            String taskName = guessTask(heading);
-            insertChunk(cx, pageId, taskName, "task", sectionUrl, anchor, heading, sectionText, sectionHtml);
-
-            // Parameter tables
-            Element frag = Jsoup.parse(sectionHtml).body();
-            for (Element table : frag.select("table")) {
-              List<String> headers = new ArrayList<>();
-              Elements thead = table.select("thead th");
-              if (!thead.isEmpty()) {
-                for (Element th : thead) headers.add(norm(th.text()).toLowerCase());
-              } else {
-                Element firstRow = table.selectFirst("tr");
-                if (firstRow != null) {
-                  for (Element th : firstRow.select("th,td")) headers.add(norm(th.text()).toLowerCase());
-                }
-              }
-              Map<String,Integer> idx = new HashMap<>();
-              for (int i=0;i<headers.size();i++) idx.put(headers.get(i), i);
-
-              for (Element tr : table.select("tbody tr")) {
-                Elements tds = tr.select("td");
-                String prop = get(tds, idx.getOrDefault("property", 0));
-                if (isBlank(prop)) continue;
-                String type = get(tds, idx.getOrDefault("type", 1));
-                String required = get(tds, idx.getOrDefault("required", 2));
-                String def = get(tds, idx.getOrDefault("default", 3));
-                String desc = get(tds, idx.getOrDefault("description", 4));
-
-                upsertProp(cx,
-                    (taskName != null ? taskName : heading),
-                    prop, type, isRequired(required), def, desc, null);
-              }
-            }
-
-            // Code examples
-            for (Element code : frag.select("pre > code")) {
-              String lang = code.className(); // e.g., "language-gradle"
-              String codeMd = "```" + lang.replace("language-", "") + "\n" + code.text() + "\n```";
-              insertExample(cx, (taskName != null ? taskName : heading), heading + " example", codeMd, null);
-            }
-          }
-
-          // Discover links but stay in allowlist
-          for (Element a : doc.select("a[href]")) {
-            String href = a.attr("abs:href");
-            if (isAllowed(href) && (!isReference(href) || isAllowedAnchor(href))) {
-              q.add(href);
-            }
-          }
-
+      if (doReset) {
+        if (cx != null) {
+          resetDatabase(cx);
           cx.commit();
-          System.out.println("Ingested: " + url);
+          System.out.println("✅ Database content wiped (fresh start).");
+        } else {
+          System.out.println("ℹ️  Reset requested but database is disabled – skipping.");
+        }
+      }
+
+      if (inputPath != null) {
+        File inputFile = new File(inputPath);
+        require(inputFile.exists(), "Input file not found: " + inputPath);
+        String baseUrl = inputFile.toURI().toString();
+        try {
+          org.jsoup.nodes.Document doc = Jsoup.parse(inputFile, "UTF-8", baseUrl);
+          processDocument(doc, baseUrl, cx);
+          if (cx != null) cx.commit();
+          System.out.println("Ingested: " + baseUrl);
         } catch (Exception e) {
-          cx.rollback();
-          System.err.println("ERROR " + url + ": " + e.getMessage());
-          e.printStackTrace();
+          if (cx != null) cx.rollback();
+          throw e;
+        }
+      } else {
+        Queue<String> q = new ArrayDeque<>();
+        Set<String> seen = new HashSet<>();
+        String startUrl = (startUrlOverride != null && !startUrlOverride.isBlank()) ? startUrlOverride : ROOT + "/reference.html";
+        q.add(startUrl);
+
+        while (!q.isEmpty()) {
+          String url = q.poll();
+          if (seen.contains(url) || !isAllowed(url)) continue;
+          seen.add(url);
+
+          try {
+            org.jsoup.nodes.Document doc = Jsoup.connect(url).timeout(30_000).get();
+            List<String> discovered = processDocument(doc, url, cx);
+            for (String href : discovered) {
+              if (!seen.contains(href)) {
+                q.add(href);
+              }
+            }
+
+            if (cx != null) cx.commit();
+            System.out.println("Ingested: " + url);
+          } catch (Exception e) {
+            if (cx != null) cx.rollback();
+            System.err.println("ERROR " + url + ": " + e.getMessage());
+            e.printStackTrace();
+          }
         }
       }
     }
   }
 
+  static List<String> processDocument(org.jsoup.nodes.Document doc, String url, java.sql.Connection cx) throws Exception {
+    Element main = Optional.ofNullable(doc.selectFirst("section#tasks.level2, div#tasks.level2, section#tasks, div#tasks"))
+                           .orElseGet(() -> Optional.ofNullable(doc.selectFirst("main, .md-content, .content, article"))
+                                                   .orElse(doc.body()));
+    String title = doc.title();
+    String pageMd = main.text();
+
+    long pageId = upsertPage(cx, url, title, pageMd);
+
+    for (Element h : main.select("h2, h3")) {
+      String heading = norm(h.text());
+      String anchor = h.id();
+      String baseUrl = url.contains("#") ? url.substring(0, url.indexOf('#')) : url;
+      String sectionUrl = (anchor != null && !anchor.isEmpty()) ? baseUrl + "#" + anchor : url;
+
+      if ("h2".equals(h.tagName()) && (anchor == null || anchor.isEmpty()) && h.parent() == main) {
+        continue;
+      }
+
+      if (isReference(url) && anchor != null && !anchor.isEmpty() && !isAllowedAnchor(sectionUrl)) {
+        continue;
+      }
+
+      List<Node> nodes = new ArrayList<>();
+      for (Node sib = h.nextSibling(); sib != null; sib = sib.nextSibling()) {
+        if (sib instanceof Element) {
+          String tag = ((Element) sib).tagName();
+          if ("h2".equals(tag) || "h3".equals(tag)) break;
+        }
+        nodes.add(sib);
+      }
+      String sectionHtml = nodes.stream().map(Node::outerHtml).collect(Collectors.joining());
+      String sectionText = Jsoup.parse(sectionHtml).text();
+
+      String taskName = guessTask(heading);
+      insertChunk(cx, pageId, taskName, "task", sectionUrl, anchor, heading, sectionText, sectionHtml);
+      if (!dbEnabled) {
+        System.out.printf(Locale.ROOT, "→ Section [%s] %s%n", heading, sectionUrl);
+      }
+
+      Element frag = Jsoup.parse(sectionHtml).body();
+      for (Element table : frag.select("table")) {
+        List<String> headers = new ArrayList<>();
+        Elements thead = table.select("thead th");
+        if (!thead.isEmpty()) {
+          for (Element th : thead) headers.add(norm(th.text()).toLowerCase(Locale.ROOT));
+        } else {
+          Element firstRow = table.selectFirst("tr");
+          if (firstRow != null) {
+            for (Element th : firstRow.select("th,td")) headers.add(norm(th.text()).toLowerCase(Locale.ROOT));
+          }
+        }
+        Map<String,Integer> idx = new HashMap<>();
+        for (int i=0;i<headers.size();i++) idx.put(headers.get(i), i);
+
+        int propIdx = firstIndex(headers, "property", "parameter", "name", "task", "feld");
+        int typeIdx = firstIndex(headers, "type", "datatype", "data type", "datentyp", "typ");
+        int defaultIdx = firstIndex(headers, "default", "standard", "standardwert", "default value", "vorgabe");
+        int descIdx = firstIndex(headers, "description", "beschreibung", "details", "erklärung", "erlaeuterung");
+        int requiredIdx = firstIndex(headers, "required", "pflicht", "mandatory", "optional");
+        boolean columnIsOptional = requiredIdx >= 0 && headers.get(requiredIdx).contains("optional");
+        if (propIdx < 0) propIdx = idx.getOrDefault("property", 0);
+        if (typeIdx < 0) typeIdx = idx.getOrDefault("type", 1);
+        if (defaultIdx < 0) defaultIdx = idx.getOrDefault("default", headers.size() > 3 ? 3 : -1);
+        if (descIdx < 0) descIdx = idx.getOrDefault("description", headers.size() > 2 ? 2 : -1);
+        if (requiredIdx < 0) requiredIdx = idx.getOrDefault("required", headers.size() > 3 ? 3 : -1);
+
+        Elements rows = table.select("tbody tr");
+        if (rows.isEmpty()) rows = table.select("tr");
+        for (Element tr : rows) {
+          Elements tds = tr.select("td");
+          String prop = get(tds, propIdx >= 0 ? propIdx : 0);
+          if (isBlank(prop)) continue;
+          String type = get(tds, typeIdx);
+          String required = get(tds, requiredIdx);
+          String def = get(tds, defaultIdx);
+          String desc = get(tds, descIdx);
+
+          boolean isReq = parseRequired(required, columnIsOptional);
+          upsertProp(cx,
+              (taskName != null ? taskName : heading),
+              prop, type, isReq, def, desc, null);
+          if (!dbEnabled) {
+            System.out.printf(Locale.ROOT, "   · %s (%s) required=%s%n", prop, type, isReq);
+          }
+        }
+      }
+
+      for (Element code : frag.select("pre > code")) {
+        String lang = code.className();
+        String codeMd = "```" + lang.replace("language-", "") + "\n" + code.text() + "\n```";
+        insertExample(cx, (taskName != null ? taskName : heading), heading + " example", codeMd, null);
+      }
+    }
+
+    List<String> links = new ArrayList<>();
+    for (Element a : doc.select("a[href]")) {
+      String href = a.attr("abs:href");
+      if (isAllowed(href) && (!isReference(href) || isAllowedAnchor(href))) {
+        links.add(href);
+      }
+    }
+    return links;
+  }
+
   // ------------------------ Reset helper ------------------------------------
   static void resetDatabase(java.sql.Connection cx) throws Exception {
+    if (cx == null) return;
     // Order is irrelevant with TRUNCATE ... CASCADE, but listed for clarity.
     String sql = """
       TRUNCATE TABLE
@@ -189,6 +283,7 @@ public class ingest_gretl {
 
   // ------------------------ Whitelist helpers -------------------------------
   static boolean isAllowed(String url) {
+    if (url.startsWith("file:")) return true;
     for (Pattern p : ALLOWLIST) if (p.matcher(url).find()) return true;
     return false;
   }
@@ -201,6 +296,7 @@ public class ingest_gretl {
 
   // ------------------------ DB ops ------------------------------------------
   static long upsertPage(java.sql.Connection cx, String url, String title, String rawMd) throws Exception {
+    if (cx == null) return -1L;
     String sql = """
         INSERT INTO pages(url,title,raw_md)
         VALUES (?,?,?)
@@ -220,6 +316,7 @@ public class ingest_gretl {
 
   static void insertChunk(java.sql.Connection cx, long pageId, String task, String sectionType,
                           String url, String anchor, String heading, String text, String mdHtml) throws Exception {
+    if (cx == null) return;
     float[] emb = openaiEmbed(heading + "\n" + text);
     String sql = """
         INSERT INTO doc_chunks
@@ -243,6 +340,7 @@ public class ingest_gretl {
 
   static void upsertProp(java.sql.Connection cx, String task, String name, String type,
                          boolean req, String def, String desc, String[] enums) throws Exception {
+    if (cx == null) return;
     String sql = """
         INSERT INTO task_properties(task_name,property_name,type,required,default_value,description,enum_values)
         VALUES (?,?,?,?,?,?,?)
@@ -265,6 +363,7 @@ public class ingest_gretl {
   }
 
   static void insertExample(java.sql.Connection cx, String task, String title, String codeMd, String expl) throws Exception {
+    if (cx == null) return;
     float[] emb = openaiEmbed(title + "\n" + codeMd + (expl == null ? "" : "\n" + expl));
     String sql = """
         INSERT INTO task_examples(task_name,title,code_md,explanation,embedding)
@@ -282,6 +381,9 @@ public class ingest_gretl {
 
   // ------------------------ OpenAI Embeddings -------------------------------
   static float[] openaiEmbed(String text) throws Exception {
+    if (!openaiEnabled) {
+      return new float[EMB_DIM];
+    }
     ObjectNode req = mapper.createObjectNode();
     req.put("model", OPENAI_EMB_MODEL);
     req.put("input", text.replaceAll("\\s+", " ").trim());
@@ -317,13 +419,62 @@ public class ingest_gretl {
     return false;
   }
 
+  static String option(String[] args, String... keys) {
+    for (int i = 0; i < args.length; i++) {
+      for (String key : keys) {
+        if (args[i].equals(key)) {
+          if (i + 1 >= args.length) {
+            throw new IllegalArgumentException("Missing value for option " + key);
+          }
+          return args[i + 1];
+        }
+      }
+    }
+    return null;
+  }
+
   static String env(String k, String d) { String v = System.getenv(k); return (v == null || v.isEmpty()) ? d : v; }
   static void require(boolean cond, String msg) { if (!cond) throw new IllegalArgumentException(msg); }
   static String norm(String s) { return s == null ? "" : s.replaceAll("\\s+", " ").trim(); }
   static boolean isBlank(String s) { return s == null || s.trim().isEmpty(); }
-  static boolean isRequired(String s) { if (s==null) return false; String x=s.toLowerCase(Locale.ROOT); return x.contains("yes")||x.contains("true")||x.contains("required"); }
-  static String get(Elements tds, int idx){ return idx<tds.size()? tds.get(idx).text().trim(): null; }
-  static String guessTask(String heading) { String first = heading.split(" ")[0]; return first.matches("[A-Z][A-Za-z0-9]*") ? first : null; }
+  static String get(Elements tds, int idx){
+    if (idx < 0 || idx >= tds.size()) return null;
+    return norm(tds.get(idx).text());
+  }
+  static String guessTask(String heading) {
+    String[] parts = heading.split(" ");
+    if (parts.length == 0) return null;
+    String first = parts[0];
+    return first.matches("[A-Z][A-Za-z0-9]*") ? first : null;
+  }
+  static int firstIndex(List<String> headers, String... options) {
+    for (int i = 0; i < headers.size(); i++) {
+      String h = headers.get(i);
+      for (String opt : options) {
+        if (h.contains(opt)) return i;
+      }
+    }
+    return -1;
+  }
+  static boolean parseRequired(String value, boolean columnIsOptional) {
+    if (value == null) return false;
+    String v = value.toLowerCase(Locale.ROOT);
+    boolean yes = containsAny(v, List.of("yes", "true", "required", "ja", "oui", "si", "sim"));
+    boolean no = containsAny(v, List.of("no", "false", "optional", "nein", "non", "na", "não", "nao"));
+    if (columnIsOptional) {
+      if (yes) return false;
+      if (no) return true;
+      return false;
+    } else {
+      if (yes) return true;
+      if (no) return false;
+      return false;
+    }
+  }
+  static boolean containsAny(String haystack, List<String> needles) {
+    for (String n : needles) if (haystack.contains(n)) return true;
+    return false;
+  }
 
   // pgvector helper: build "[0.1,0.2,...]" without Arrays.stream on float[]
   static String vectorLiteral(float[] v) {
