@@ -107,6 +107,9 @@ public class ingest_gretl {
 
     try (java.sql.Connection cx = dbEnabled ? DriverManager.getConnection(JDBC_URL, JDBC_USER, JDBC_PASS) : null) {
       if (cx != null) {
+        try (java.sql.Statement st = cx.createStatement()) {
+          st.execute("SET search_path TO rag");
+        }
         cx.setAutoCommit(false);
       }
 

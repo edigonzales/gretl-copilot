@@ -29,6 +29,33 @@ export OPENAI_EMBED_MODEL=text-embedding-3-small
 jbang ingest_gretl.java
 ```
 
+## Exporting data as INSERT statements
+
+You can dump the ingested data as plain `INSERT` commands for use in
+pipelines or Codex-style demos. With the compose stack running:
+
+```bash
+# Open a shell inside the Postgres container (optional helper)
+docker compose exec pgvector bash
+
+# Inside the container: dump data-only SQL with INSERT statements
+pg_dump -U gretl --schema=rag --data-only --inserts gretl_rag > /tmp/rag_inserts.sql
+
+# Exit the container when done
+exit
+
+# Copy the dump file back to the host
+docker compose cp gretl-rag-pg:/tmp/rag_inserts.sql ./rag_inserts.sql
+```
+
+For non-interactive environments (CI/CD, pipelines), you can skip the shell
+and stream the dump directly:
+
+```bash
+docker compose exec -T pgvector \
+  pg_dump -U gretl --schema=rag --data-only --inserts gretl_rag > rag_inserts.sql
+```
+
 ## Switching to a larger embedding model
 
 If you choose `text-embedding-3-large` (~3072 dims):
