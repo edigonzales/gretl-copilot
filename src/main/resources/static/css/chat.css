@@ -290,6 +290,9 @@ main {
     border-color: rgba(16, 185, 129, 0.4);
     color: var(--accent-text);
 }
+[data-theme="light"] [data-role="user"] .message-bubble {
+    color: var(--text);
+}
 
 [data-theme="dark"] [data-role="user"] .message-bubble {
     color: #d1fae5;
