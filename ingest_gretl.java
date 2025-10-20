@@ -108,7 +108,7 @@ public class ingest_gretl {
     try (java.sql.Connection cx = dbEnabled ? DriverManager.getConnection(JDBC_URL, JDBC_USER, JDBC_PASS) : null) {
       if (cx != null) {
         try (java.sql.Statement st = cx.createStatement()) {
-          st.execute("SET search_path TO rag");
+          //st.execute("SET search_path TO rag");
         }
         cx.setAutoCommit(false);
       }
@@ -385,7 +385,7 @@ public class ingest_gretl {
   static long upsertPage(java.sql.Connection cx, String url, String title, String rawMd) throws Exception {
     if (cx == null) return -1L;
     String sql = """
-        INSERT INTO pages(url,title,raw_md)
+        INSERT INTO rag.pages(url,title,raw_md)
         VALUES (?,?,?)
         ON CONFLICT (url)
         DO UPDATE SET title=EXCLUDED.title, raw_md=EXCLUDED.raw_md, fetched_at=now()
@@ -406,7 +406,7 @@ public class ingest_gretl {
     if (cx == null) return;
     float[] emb = openaiEmbed(heading + "\n" + text);
     String sql = """
-        INSERT INTO doc_chunks
+        INSERT INTO rag.doc_chunks
           (page_id,task_name,section_type,url,anchor,heading,content_text,content_md,embedding)
         VALUES
           (?,?,?,?,?,?,?,?, ?::vector)
@@ -429,7 +429,7 @@ public class ingest_gretl {
                          boolean req, String def, String desc, String[] enums) throws Exception {
     if (cx == null) return;
     String sql = """
-        INSERT INTO task_properties(task_name,property_name,type,required,default_value,description,enum_values)
+        INSERT INTO rag.task_properties(task_name,property_name,type,required,default_value,description,enum_values)
         VALUES (?,?,?,?,?,?,?)
         ON CONFLICT DO NOTHING
       """;
@@ -453,7 +453,7 @@ public class ingest_gretl {
     if (cx == null) return;
     float[] emb = openaiEmbed(title + "\n" + codeMd + (expl == null ? "" : "\n" + expl));
     String sql = """
-        INSERT INTO task_examples(task_name,title,code_md,explanation,embedding)
+        INSERT INTO rag.task_examples(task_name,title,code_md,explanation,embedding)
         VALUES (?,?,?,?, ?::vector)
       """;
     try (java.sql.PreparedStatement ps = cx.prepareStatement(sql)) {
