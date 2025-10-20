@@ -5,11 +5,6 @@ plugins {
     id 'gg.jte.gradle' version '3.1.16'
 }
 
-apply from: "$rootDir/gradle/versioning.gradle"
-//apply from: "$rootDir/gradle/docker.gradle"
-
-group = 'ch.so.agi.gretl'
-
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
@@ -20,35 +15,14 @@ repositories {
     mavenCentral()
 }
 
-ext {
-    set('springAiVersion', "1.0.3")
-}
-
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'gg.jte:jte-spring-boot-starter-3:3.1.16'
     implementation 'org.springframework.ai:spring-ai-starter-model-openai'
-    developmentOnly 'org.springframework.boot:spring-boot-devtools'
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-}
-
-dependencyManagement {
-    imports {
-        mavenBom "org.springframework.ai:spring-ai-bom:${springAiVersion}"
-    }
 }
 
 jte {
     generate()
     binaryStaticContent = true
-}
-
-bootJar {
-    archiveClassifier.set('exec')
-}
-
-tasks.named('test') {
-    useJUnitPlatform()
 }
