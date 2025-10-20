@@ -1,38 +1,38 @@
 :root {
     color-scheme: dark;
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --bg: #0b1120;
-    --bg-muted: #0f172a;
-    --surface-0: rgba(15, 23, 42, 0.85);
-    --surface-1: rgba(15, 23, 42, 0.7);
-    --surface-2: rgba(30, 41, 59, 0.6);
-    --border: rgba(148, 163, 184, 0.2);
-    --border-strong: rgba(148, 163, 184, 0.35);
-    --text: #e2e8f0;
-    --text-muted: rgba(148, 163, 184, 0.85);
-    --text-strong: #f8fafc;
-    --accent: #10b981;
-    --accent-soft: rgba(16, 185, 129, 0.12);
-    --accent-text: #022c22;
-    --shadow-soft: 0 22px 48px rgba(15, 23, 42, 0.45);
+    --bg: #091227;
+    --bg-muted: #0f1c35;
+    --surface-0: rgba(19, 35, 64, 0.88);
+    --surface-1: rgba(19, 35, 64, 0.74);
+    --surface-2: rgba(29, 46, 82, 0.68);
+    --border: rgba(148, 176, 218, 0.22);
+    --border-strong: rgba(148, 176, 218, 0.4);
+    --text: #e3e9f6;
+    --text-muted: rgba(168, 190, 229, 0.85);
+    --text-strong: #f8fbff;
+    --accent: #60a5fa;
+    --accent-soft: rgba(96, 165, 250, 0.18);
+    --accent-text: #0b1220;
+    --shadow-soft: 0 22px 48px rgba(8, 15, 32, 0.45);
     --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 [data-theme="light"] {
     color-scheme: light;
-    --bg: #f8fafc;
-    --bg-muted: #eef2ff;
-    --surface-0: rgba(255, 255, 255, 0.94);
-    --surface-1: rgba(255, 255, 255, 0.86);
-    --surface-2: rgba(248, 250, 252, 0.9);
-    --border: rgba(203, 213, 225, 0.8);
-    --border-strong: rgba(148, 163, 184, 0.55);
-    --text: #0f172a;
-    --text-muted: rgba(71, 85, 105, 0.85);
-    --text-strong: #020617;
-    --accent: #0f9d7a;
-    --accent-soft: rgba(16, 185, 129, 0.08);
-    --accent-text: #f7fff9;
+    --bg: #f5f7fb;
+    --bg-muted: #e8f0ff;
+    --surface-0: rgba(255, 255, 255, 0.96);
+    --surface-1: rgba(255, 255, 255, 0.9);
+    --surface-2: rgba(236, 243, 255, 0.92);
+    --border: rgba(181, 198, 230, 0.72);
+    --border-strong: rgba(148, 176, 218, 0.6);
+    --text: #102241;
+    --text-muted: rgba(63, 81, 122, 0.82);
+    --text-strong: #06132d;
+    --accent: #2563eb;
+    --accent-soft: rgba(37, 99, 235, 0.12);
+    --accent-text: #f5f8ff;
     --shadow-soft: 0 18px 40px rgba(15, 23, 42, 0.12);
     --shadow-inner: inset 0 1px 0 rgba(15, 23, 42, 0.05);
 }
@@ -74,7 +74,7 @@ button {
 button:focus-visible,
 a:focus-visible,
 textarea:focus-visible {
-    outline: 2px solid rgba(16, 185, 129, 0.7);
+    outline: 2px solid rgba(96, 165, 250, 0.7);
     outline-offset: 2px;
 }
 
@@ -97,7 +97,7 @@ textarea:focus-visible {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(94, 234, 212, 0.65);
+    background: rgba(96, 165, 250, 0.65);
 }
 
 pre code {
@@ -164,38 +164,32 @@ pre code {
     border: 1px solid var(--border);
     background-color: var(--surface-1);
     color: var(--accent);
-    box-shadow: 0 10px 20px rgba(15, 23, 42, 0.18);
+    box-shadow: 0 10px 24px rgba(8, 17, 35, 0.22);
 }
 
 main {
     flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
 .chat-section {
-    padding: 3.5rem 0;
+    flex: 1;
+    display: flex;
+    padding: 2.75rem 0 3.5rem;
 }
 
 .chat-section-inner {
+    flex: 1;
     margin: 0 auto;
-    width: min(92vw, 1380px);
+    width: min(92vw, 860px);
     display: flex;
     flex-direction: column;
-    gap: 2.5rem;
+    gap: 1.75rem;
 }
 
-.chat-layout {
-    display: grid;
-    gap: 2rem;
-}
-
-@media (min-width: 960px) {
-    .chat-layout {
-        grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr);
-        align-items: start;
-    }
-}
-
-.aside {
+.chat-stack {
+    flex: 1;
     display: flex;
     flex-direction: column;
     gap: 1.75rem;
@@ -204,11 +198,21 @@ main {
 .chat-panel {
     display: flex;
     flex-direction: column;
+    flex: 1;
     border-radius: 26px;
     border: 1px solid var(--border);
     background-color: var(--surface-1);
     box-shadow: var(--shadow-soft);
-    overflow: hidden;
+    min-height: clamp(520px, 72vh, 860px);
+    position: relative;
+    isolation: isolate;
+}
+
+.chat-panel-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
 }
 
 .chat-panel-header {
@@ -253,12 +257,13 @@ main {
 }
 
 .chat-messages {
-    padding: 1.25rem 1.75rem 1.75rem;
+    padding: 1.25rem 1.75rem 1.5rem;
     display: flex;
     flex-direction: column;
     gap: 1rem;
     overflow-y: auto;
-    max-height: min(70vh, 520px);
+    flex: 1;
+    min-height: 0;
 }
 
 .message-row {
@@ -287,12 +292,12 @@ main {
 
 [data-role="user"] .message-bubble {
     background-color: var(--accent-soft);
-    border-color: rgba(16, 185, 129, 0.4);
+    border-color: rgba(96, 165, 250, 0.45);
     color: var(--accent-text);
 }
 
 [data-theme="dark"] [data-role="user"] .message-bubble {
-    color: #d1fae5;
+    color: #dbeafe;
 }
 
 [data-role="assistant"] .message-bubble {
@@ -311,14 +316,14 @@ main {
     font-size: 0.9rem;
     line-height: 1.6;
     padding: 0.85rem 1.1rem;
-    background-color: rgba(244, 114, 182, 0.12);
-    border: 1px solid rgba(244, 114, 182, 0.4);
-    color: #fbcfe8;
+    background-color: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(96, 165, 250, 0.45);
+    color: #dbeafe;
 }
 
 [data-theme="light"] .validation-message {
-    background-color: rgba(244, 114, 182, 0.2);
-    color: #9d174d;
+    background-color: rgba(37, 99, 235, 0.12);
+    color: #1d4ed8;
 }
 
 .empty-state {
@@ -343,9 +348,16 @@ main {
 
 .chat-form {
     margin: 0;
-    padding: 1.25rem 1.75rem 1.75rem;
+    padding: 1.25rem 1.75rem calc(1.75rem + env(safe-area-inset-bottom, 0));
     border-top: 1px solid var(--border);
-    background-color: var(--surface-0);
+    background: linear-gradient(180deg, rgba(9, 18, 39, 0) 0%, var(--surface-0) 55%);
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+}
+
+[data-theme="light"] .chat-form {
+    background: linear-gradient(180deg, rgba(245, 247, 251, 0) 0%, rgba(255, 255, 255, 0.96) 55%);
 }
 
 .chat-form textarea {
@@ -362,7 +374,7 @@ main {
 }
 
 [data-theme="light"] .chat-form textarea {
-    background-color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.95);
 }
 
 .chat-form textarea::placeholder {
@@ -389,12 +401,12 @@ main {
     border-radius: 999px;
     border: none;
     background-color: var(--accent);
-    color: #01120d;
+    color: var(--accent-text);
     transition: background-color 0.2s ease;
 }
 
 .submit-button:hover {
-    background-color: #34d399;
+    background-color: #3b82f6;
 }
 
 .submit-button svg {
@@ -435,6 +447,11 @@ main {
     display: flex;
     flex-direction: column;
     gap: 1.1rem;
+}
+
+.snippet-card,
+.info-card {
+    width: 100%;
 }
 
 .snippet-header {
@@ -496,7 +513,7 @@ main {
 }
 
 .copy-button[data-state="copied"] {
-    border-color: rgba(16, 185, 129, 0.7);
+    border-color: rgba(96, 165, 250, 0.75);
     color: var(--accent);
 }
 
@@ -536,7 +553,7 @@ main {
     border-radius: 20px;
     border: 1px solid var(--border-strong);
     background-color: var(--surface-2);
-    color: #c1f4dd;
+    color: #dbeafe;
     padding: 1.1rem 1.25rem;
     font-size: 0.82rem;
     line-height: 1.6;
@@ -545,9 +562,15 @@ main {
     box-shadow: var(--shadow-inner);
 }
 
+.snippet,
+.snippet code {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    font-variant-ligatures: none;
+}
+
 [data-theme="light"] .snippet {
-    color: #03624a;
-    background-color: #f8fafc;
+    color: #1d4ed8;
+    background-color: rgba(240, 245, 255, 0.96);
 }
 
 .snippet-note {
