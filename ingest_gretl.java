@@ -30,7 +30,7 @@ import com.fasterxml.jackson.databind.node.*;
 
 public class ingest_gretl {
   // ----- Config (env with sensible defaults) --------------------------------
-  static final String JDBC_URL = env("JDBC_URL", "jdbc:postgresql://localhost:5432/gretl_rag");
+  static final String JDBC_URL = env("JDBC_URL", "jdbc:postgresql://localhost:54323/gretl_rag");
   static final String JDBC_USER = env("JDBC_USER", "gretl");
   static final String JDBC_PASS = env("JDBC_PASS", "gretl");
   static final String ROOT      = env("ROOT", "https://gretl.app");
@@ -176,7 +176,7 @@ public class ingest_gretl {
 
     for (Element h : main.select("h2, h3")) {
       String heading = norm(h.text());
-      String anchor = h.id();
+      String anchor = h.attr("data-anchor-id");
       String baseUrl = url.contains("#") ? url.substring(0, url.indexOf('#')) : url;
       String sectionUrl = (anchor != null && !anchor.isEmpty()) ? baseUrl + "#" + anchor : url;
 
