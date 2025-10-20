@@ -1,0 +1,96 @@
+tasks.register('copyNativeImage', Copy) {
+    //dependsOn 'nativeCompile'
+    from fileTree("$buildDir/native/nativeCompile").matching {
+        include 'modelfinder'  
+        include '**/*.so'
+    }
+    into file("$projectDir/docker/image/tmp")
+}
+
+// tasks.register('buildNativeDockerImage', Exec) {
+//     dependsOn 'copyNativeImage'
+//     def githash = getCheckedOutGitCommitHash()
+//     def build_timestamp = getTimestamp()
+
+//     workingDir "$projectDir/docker/image"
+//     commandLine 'docker', 'build',
+//                 '--no-cache', '--force-rm',
+//                 '-t', "sogis/datahub:latest",
+//                 '-f', 'Dockerfile.alpine',  '.'
+// }
+
+// Wird sich noch ändern, wenn wir JVM-Image herstellen
+// und Docker-Image testen wollen.
+
+tasks.register('buildNativeDockerImage', Exec) {
+    dependsOn 'copyNativeImage'
+    def githash = getCheckedOutGitCommitHash()
+    def build_timestamp = getTimestamp()
+
+    // TODO add ghcr.io 
+    workingDir "$projectDir/docker/image"
+    commandLine 'docker', 'buildx', 'build',
+                '--platform', 'linux/amd64',
+                '-t', "sogis/modelfinder:$version.major",
+                '-t', "sogis/modelfinder:$version.major.$version.minor",
+                '-t', "sogis/modelfinder:$version.major.$version.minor.$version.build",
+                '-t', "sogis/modelfinder",
+                '--label', "modelfinder.created=$build_timestamp", 
+                '--label', "modelfinder.git_commit=$githash",
+                '--label', "modelfinder.version=$version",
+                '-f', 'Dockerfile.native',  '.', '--push'
+                //'-f', 'Dockerfile.native',  '.'
+}
+
+tasks.register('copyJar', Copy) {
+    from file("$buildDir/libs/modelfinder-$version.major.$version.minor.$version.build-exec.jar")
+    into file("$projectDir/docker/image/tmp")
+}
+
+tasks.register('buildJavaDockerImage', Exec) {
+    dependsOn 'copyJar'
+    def githash = getCheckedOutGitCommitHash()
+    def build_timestamp = getTimestamp()
+
+    workingDir "$projectDir/docker/image"
+    commandLine 'docker', 'buildx', 'build',
+                '--platform', 'linux/amd64,linux/arm64',
+                '-t', "sogis/modelfinder-jvm:$version.major",
+                '-t', "sogis/modelfinder-jvm:$version.major.$version.minor",
+                '-t', "sogis/modelfinder-jvm:$version.major.$version.minor.$version.build",
+                '-t', "sogis/modelfinder-jvm",
+                '--label', "modelfinder-jvm.created=$build_timestamp", 
+                '--label', "modelfinder-jvm.git_commit=$githash",
+                '--label', "modelfinder-jvm.version=$version",
+                '-f', 'Dockerfile.ubi-layered',  '.', '--push'
+                //'-f', 'Dockerfile.ubi-layered',  '.'
+}
+
+tasks.register('buildJavaAotDockerImage', Exec) {
+    def githash = getCheckedOutGitCommitHash()
+    def build_timestamp = getTimestamp()
+    def build_number = System.env.BUILD_NUMBER
+
+    workingDir "$projectDir"
+    commandLine 'docker', 'buildx', 'build',
+                '--platform', 'linux/amd64,linux/arm64',
+                '--build-arg', "BUILD_NUMBER=$build_number",
+                '-t', "sogis/modelfinder-jvm-aot:$version.major",
+                '-t', "sogis/modelfinder-jvm-aot:$version.major.$version.minor",
+                '-t', "sogis/modelfinder-jvm-aot:$version.major.$version.minor.$version.build",
+                '-t', "sogis/modelfinder-jvm-aot",
+                '--label', "modelfinder-jvm-aot.created=$build_timestamp", 
+                '--label', "modelfinder-jvm-aot.git_commit=$githash",
+                '--label', "modelfinder-jvm-aot.version=$version",
+                '-f', "$projectDir/docker/image/Dockerfile.aot",  '.', '--push'
+                //'-f', "$projectDir/docker/image/Dockerfile.aot",  '.'
+}
+
+def getCheckedOutGitCommitHash() {
+    'git log -1 --pretty=%H'.execute().text.trim()
+}
+
+def getTimestamp() {
+    def date = new Date()
+    return date.format('yyyy-MM-dd HH:mm:ss')
+}
