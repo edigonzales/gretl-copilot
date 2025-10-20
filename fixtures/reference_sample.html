@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>GRETL Reference</title>
+</head>
+<body>
+  <header><h1>GRETL Reference</h1></header>
+  <main>
+    <section id="introduction" class="level2">
+      <h2>Introduction</h2>
+      <p>Welcome to the GRETL reference.</p>
+    </section>
+    <section id="tasks" class="level2">
+      <h2>Tasks</h2>
+      <p>This section lists GRETL tasks.</p>
+      <section id="Ili2pgImport" class="level3">
+        <h3>Ili2pgImport</h3>
+        <p>Imports INTERLIS data into PostGIS.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Property</th>
+              <th>Type</th>
+              <th>Required</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>dataFile</td>
+              <td>Path</td>
+              <td>yes</td>
+              <td>Path to the INTERLIS data file.</td>
+            </tr>
+            <tr>
+              <td>dbUrl</td>
+              <td>String</td>
+              <td>yes</td>
+              <td>Database JDBC URL.</td>
+            </tr>
+          </tbody>
+        </table>
+        <pre><code class="language-bash">gretl Ili2pgImport --dataFile=data.ili</code></pre>
+      </section>
+      <section id="Workflow" class="level3">
+        <h3>Workflow</h3>
+        <p>Compose multiple tasks into a workflow.</p>
+        <table>
+          <tr>
+            <th>Name</th>
+            <th>Datatype</th>
+            <th>Optional</th>
+            <th>Beschreibung</th>
+          </tr>
+          <tr>
+            <td>tasks</td>
+            <td>List</td>
+            <td>optional</td>
+            <td>List of task identifiers.</td>
+          </tr>
+        </table>
+      </section>
+    </section>
+  </main>
+</body>
+</html>
