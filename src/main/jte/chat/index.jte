@@ -56,7 +56,7 @@
                 <input type="hidden" name="sessionId" value="${sessionId}">
                 <div class="composer__field">
                     <label class="sr-only" for="message">Message</label>
-                    <textarea id="message" name="message" rows="1" required placeholder="Ask GRETL Copilot how to automate your next workflow..."
+                    <textarea id="message" name="message" rows="4" required placeholder="Ask GRETL Copilot how to automate your next workflow..."
                         autocomplete="off"></textarea>
                     <button type="submit" class="btn btn--primary" aria-label="Send message">
                         <span aria-hidden="true">&#8593;</span>
@@ -102,6 +102,29 @@
                 }, 1800);
             });
         });
+
+        (function () {
+            var textarea = document.getElementById('message');
+            if (!textarea) {
+                return;
+            }
+
+            var baseHeight = textarea.scrollHeight;
+
+            function autoResize() {
+                textarea.style.height = 'auto';
+                textarea.style.height = Math.max(baseHeight, textarea.scrollHeight) + 'px';
+            }
+
+            textarea.addEventListener('input', autoResize);
+            autoResize();
+
+            document.body.addEventListener('htmx:afterRequest', function (event) {
+                if (event.target && event.target.matches('.composer__form')) {
+                    textarea.style.height = baseHeight + 'px';
+                }
+            });
+        })();
     </script>
 </body>
 </html>
