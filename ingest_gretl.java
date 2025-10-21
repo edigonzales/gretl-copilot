@@ -357,10 +357,10 @@ public class ingest_gretl {
     // Order is irrelevant with TRUNCATE ... CASCADE, but listed for clarity.
     String sql = """
       TRUNCATE TABLE
-        doc_chunks,
-        task_properties,
-        task_examples,
-        pages
+        rag.doc_chunks,
+        rag.task_properties,
+        rag.task_examples,
+        rag.pages
       RESTART IDENTITY CASCADE
     """;
     try (java.sql.Statement st = cx.createStatement()) {

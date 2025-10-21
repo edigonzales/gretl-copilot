@@ -49,5 +49,9 @@ CREATE INDEX IF NOT EXISTS idx_doc_chunks_task_section ON rag.doc_chunks (task_n
 CREATE INDEX IF NOT EXISTS idx_task_props ON rag.task_properties (task_name, property_name);
 
 -- Vector indexes (create after data is loaded; lists depends on dataset size)
--- CREATE INDEX idx_doc_chunks_embed ON rag.doc_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
--- CREATE INDEX idx_task_examples_embed ON rag.task_examples USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+--CREATE INDEX idx_doc_chunks_embed ON rag.doc_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+--CREATE INDEX idx_task_examples_embed ON rag.task_examples USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+-- text-embedding-3-large
+ALTER TABLE rag.doc_chunks    ALTER COLUMN embedding TYPE vector(3072);
+ALTER TABLE rag.task_examples ALTER COLUMN embedding TYPE vector(3072);
