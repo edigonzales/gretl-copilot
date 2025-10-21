@@ -69,6 +69,14 @@
         </section>
     </main>
     <script>
+        var sseSources = new Map();
+
+        document.body.addEventListener('htmx:sseOpen', function (event) {
+            if (event.target && event.detail && event.detail.source) {
+                sseSources.set(event.target, event.detail.source);
+            }
+        });
+
         document.addEventListener('htmx:afterSwap', function (event) {
             if (event.detail.target && event.detail.target.id === 'conversation') {
                 event.detail.target.scrollTop = event.detail.target.scrollHeight;
@@ -76,10 +84,27 @@
         });
 
         document.body.addEventListener('htmx:sseMessage', function (event) {
-            if (event.detail && event.detail.elt) {
-                var target = event.detail.elt;
-                if (target.classList && target.classList.contains('assistant-body')) {
-                    var indicator = target.previousElementSibling;
+            if (!event.detail) {
+                return;
+            }
+
+            if (event.detail.type === 'complete') {
+                var source = sseSources.get(event.target);
+                if (source && typeof source.close === 'function') {
+                    source.close();
+                }
+                sseSources.delete(event.target);
+                if (event.target) {
+                    event.target.removeAttribute('hx-ext');
+                    event.target.removeAttribute('sse-connect');
+                }
+                return;
+            }
+
+            if (event.target) {
+                var assistantBody = event.target.querySelector('.assistant-body');
+                if (assistantBody) {
+                    var indicator = assistantBody.previousElementSibling;
                     if (indicator && indicator.classList.contains('typing-indicator')) {
                         indicator.remove();
                     }
