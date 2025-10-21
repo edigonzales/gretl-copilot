@@ -1,5 +1,86 @@
 # GRETL RAG Starter
 
+## Application overview
+
+This project provides a Spring Boot chat assistant that helps users write
+GRETL tasks. The frontend collects the user question, forwards it to the
+backend, and renders the response together with the supporting sources. The
+backend orchestrates three main services:
+
+* **Hybrid retrieval:** combines pgvector similarity search and PostgreSQL
+  full-text (BM25) ranking to assemble a set of relevant documentation
+  passages from the `rag.doc_chunks` table.
+* **Cross-encoder re-ranking:** uses Spring AI to score the top candidates
+  with a lightweight chat model so that only the five to ten most relevant
+  passages are kept for the language model prompt.
+* **LLM answer generation:** calls the configured OpenAI-compatible chat model
+  with the user question and the re-ranked passages to produce a grounded
+  response.
+
+### Sequence diagram
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as Chat UI
+    participant Chat as ChatController
+    participant Retrieval as DatabaseRetrievalService
+    participant PG as Postgres (pgvector)
+    participant Reranker as Spring AI ChatModel
+    participant OpenAI as OpenAI Chat Model
+
+    U->>UI: Enter GRETL task question
+    UI->>Chat: POST /chat with user message
+    Chat->>Retrieval: retrieveContext(query)
+    Retrieval->>PG: Run hybrid SQL (vector + BM25)
+    PG-->>Retrieval: Return top candidate passages
+    Retrieval->>Reranker: Score (query, passage) pairs
+    Reranker-->>Retrieval: Re-ranked top K passages
+    Retrieval-->>Chat: Provide final context bundle
+    Chat->>OpenAI: Invoke chat completion with context
+    OpenAI-->>Chat: Return answer and citations
+    Chat-->>UI: Render response for the user
+    UI-->>U: Display grounded answer
+```
+
+## Requirements
+
+* Java 21 (managed through the Gradle toolchain)
+* Docker (to run the PostgreSQL + pgvector stack)
+* Optional: [JBang](https://www.jbang.dev/) for running the ingester
+
+Environment variables:
+
+* `OPENAI_API_KEY` – token for the chat and embedding models (the development
+  stack uses a mocked service but still expects this variable to be present)
+* `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`,
+  `SPRING_DATASOURCE_PASSWORD` – override the default JDBC connection if needed
+
+## Running the application
+
+1. Start the vector database:
+
+   ```bash
+   docker compose up -d
+   ```
+
+   Adminer is available at http://localhost:8080 (system: PostgreSQL, server:
+   `pgvector`, user: `gretl`, password: `gretl`, database: `gretl_rag`).
+
+2. Ensure documentation content is ingested (see the next section for
+   instructions using the `ingest_gretl.java` helper).
+
+3. Export an API key and start the Spring Boot application:
+
+   ```bash
+   export OPENAI_API_KEY=sk-your-token
+   ./gradlew bootRun
+   ```
+
+   The chat frontend becomes available at http://localhost:8081.
+
+## Ingestion utilities
+
 This bundle includes:
 - `ingest_gretl.java` – single-file **JBang** ingester using **OpenAI embeddings** and a hardcoded whitelist (`https://gretl.app/reference.html` + anchors).
 - `docker-compose.yml` – Postgres with **pgvector** and Adminer.
