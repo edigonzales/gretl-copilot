@@ -289,6 +289,17 @@ body {
     font-size: 0.85rem;
 }
 
+.btn--icon {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+}
+
+.btn--icon svg {
+    width: 18px;
+    height: 18px;
+}
+
 .btn--copied {
     background: rgba(46, 204, 113, 0.18);
     color: #0f8a5f;
