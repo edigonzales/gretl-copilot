@@ -76,12 +76,15 @@
         });
 
         document.body.addEventListener('htmx:sseMessage', function (event) {
-            if (!event.detail || event.detail.eventName !== 'message') {
+            if (!event.detail) {
                 return;
             }
 
-            if (event.target) {
-                var assistantBody = event.target.querySelector('.assistant-body');
+            var messageType = event.detail.type;
+            var container = event.target;
+
+            if (messageType === 'message' && container) {
+                var assistantBody = container.querySelector('.assistant-body');
                 if (assistantBody) {
                     var indicator = assistantBody.previousElementSibling;
                     if (indicator && indicator.classList.contains('typing-indicator')) {
@@ -90,10 +93,28 @@
                 }
             }
 
+            if (messageType === 'complete' && container) {
+                container.removeAttribute('sse-connect');
+                container.removeAttribute('data-sse-connect');
+                container.removeAttribute('sse-close');
+                container.removeAttribute('data-sse-close');
+            }
+
             var conversation = document.getElementById('conversation');
             if (conversation) {
                 conversation.scrollTop = conversation.scrollHeight;
             }
+        });
+
+        document.body.addEventListener('htmx:sseClose', function (event) {
+            var container = event.target;
+            if (!container) {
+                return;
+            }
+            container.removeAttribute('sse-connect');
+            container.removeAttribute('data-sse-connect');
+            container.removeAttribute('sse-close');
+            container.removeAttribute('data-sse-close');
         });
 
         document.addEventListener('click', function (event) {

@@ -37,8 +37,8 @@ public class ChatController {
     }
 
     @PostMapping(value = "/chat/message", produces = MediaType.TEXT_HTML_VALUE)
-    public String postMessage(@RequestParam("sessionId") String sessionId,
-            @RequestParam("message") String userMessage, Model model) {
+    public String postMessage(@RequestParam(name = "sessionId") String sessionId,
+            @RequestParam(name = "message") String userMessage, Model model) {
         UUID messageId = chatService.handleUserMessage(sessionId, userMessage);
         model.addAttribute("userMessage", userMessage);
         model.addAttribute("sessionId", sessionId);
@@ -47,14 +47,14 @@ public class ChatController {
     }
 
     @GetMapping(value = "/chat/stream/{sessionId}/{messageId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public @ResponseBody Flux<ServerSentEvent<String>> streamAssistant(@PathVariable String sessionId,
-            @PathVariable UUID messageId) {
+    public @ResponseBody Flux<ServerSentEvent<String>> streamAssistant(
+            @PathVariable(name = "sessionId") String sessionId, @PathVariable(name = "messageId") UUID messageId) {
         return chatService.streamAssistantResponse(sessionId, messageId);
     }
 
     @GetMapping("/chat/download/{sessionId}/{messageId}")
-    public Mono<ResponseEntity<byte[]>> downloadBuildGradle(@PathVariable String sessionId,
-            @PathVariable UUID messageId) {
+    public Mono<ResponseEntity<byte[]>> downloadBuildGradle(@PathVariable(name = "sessionId") String sessionId,
+            @PathVariable(name = "messageId") UUID messageId) {
         return chatService.loadBuildGradle(sessionId, messageId).map(content -> ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"build.gradle\"")
                 .contentType(MediaType.TEXT_PLAIN).body(content)).defaultIfEmpty(ResponseEntity.notFound().build());
