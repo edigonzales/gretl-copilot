@@ -49,10 +49,19 @@ body {
     gap: 16px;
 }
 
-.brand__badge svg {
+.brand__badge svg,
+.brand__badge img {
     width: 52px;
     height: 52px;
+    display: block;
+}
+
+.brand__badge svg {
     fill: var(--accent);
+}
+
+.brand__badge img {
+    object-fit: contain;
 }
 
 .brand__name {
@@ -165,10 +174,19 @@ body {
     color: var(--text-primary);
 }
 
-.message__title svg {
+.message__title svg,
+.message__title img {
     width: 22px;
     height: 22px;
+    display: block;
+}
+
+.message__title svg {
     fill: var(--accent);
+}
+
+.message__title img {
+    object-fit: contain;
 }
 
 .message--assistant .message__content {
