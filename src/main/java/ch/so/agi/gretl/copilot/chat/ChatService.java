@@ -72,8 +72,8 @@ public class ChatService {
         case TEXT -> {
             String token = segment.content();
             assistantMessage.appendContent(token + " ");
-            yield Flux
-                    .just(toMessageEvent("<span class=\"assistant-token\">" + escapeHtml(token) + " </span>"));
+            yield Flux.just(toMessageEvent(
+                    "<span class=\"assistant-token\">" + escapeHtml(token) + "&nbsp;</span>"));
         }
         case CODE_BLOCK -> {
             session.registerBuildGradle(messageId, segment.content());
