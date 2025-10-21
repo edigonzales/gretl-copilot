@@ -16,7 +16,7 @@
     <div class="message__content">
         <header class="message__header message__header--assistant">
             <span class="message__title">
-                <img src="/gretl_logo_hexagon_small.png" alt="GRETL Copilot logo" />
+                <img src="/gretl_logo_hexagon_small.png" width="25" alt="GRETL Copilot logo" />
                 <span class="message__author">GRETL Copilot</span>
             </span>
             <span class="message__meta">Guided Task Assistant</span>

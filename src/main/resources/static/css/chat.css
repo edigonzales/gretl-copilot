@@ -3,7 +3,8 @@
     --bg-body: #ffffff;
     --bg-panel: #ffffff;
     --bg-user: #f1f2f4;
-    --accent: #4a5cff;
+    /*--accent: #4a5cff;*/
+    --accent: #004b89;
     --accent-soft: rgba(74, 92, 255, 0.12);
     --text-primary: #1f232b;
     --text-secondary: #69707f;
