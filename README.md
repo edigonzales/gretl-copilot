@@ -45,7 +45,7 @@ pg_dump -U gretl --schema=rag --data-only --inserts gretl_rag > /tmp/rag_inserts
 exit
 
 # Copy the dump file back to the host
-docker compose cp gretl-rag-pg:/tmp/rag_inserts.sql ./rag_inserts.sql
+docker compose cp pgvector:/tmp/rag_inserts.sql ./rag_inserts.sql
 ```
 
 For non-interactive environments (CI/CD, pipelines), you can skip the shell

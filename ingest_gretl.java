@@ -404,7 +404,7 @@ public class ingest_gretl {
   static void insertChunk(java.sql.Connection cx, long pageId, String task, String sectionType,
                           String url, String anchor, String heading, String text, String mdHtml) throws Exception {
     if (cx == null) return;
-    float[] emb = openaiEmbed(heading + "\n" + text);
+    float[] emb = openaiEmbedPooled(heading + "\n" + text);
     String sql = """
         INSERT INTO rag.doc_chunks
           (page_id,task_name,section_type,url,anchor,heading,content_text,content_md,embedding)
@@ -451,7 +451,7 @@ public class ingest_gretl {
 
   static void insertExample(java.sql.Connection cx, String task, String title, String codeMd, String expl) throws Exception {
     if (cx == null) return;
-    float[] emb = openaiEmbed(title + "\n" + codeMd + (expl == null ? "" : "\n" + expl));
+    float[] emb = openaiEmbedPooled(title + "\n" + codeMd + (expl == null ? "" : "\n" + expl));
     String sql = """
         INSERT INTO rag.task_examples(task_name,title,code_md,explanation,embedding)
         VALUES (?,?,?,?, ?::vector)
@@ -573,5 +573,130 @@ public class ingest_gretl {
     }
     sb.append(']');
     return sb.toString();
+  }
+
+// ===== Embedding split/pooling config =====
+static final int   MAX_TOKENS_PER_INPUT = 7500;  // leave headroom under 8192
+static final int   CHARS_PER_TOKEN      = 4;     // rough heuristic
+static final int   MAX_CHARS_PER_INPUT  = MAX_TOKENS_PER_INPUT * CHARS_PER_TOKEN; // ≈ 30k
+static final int   HARD_MAX_CHARS       = 60_000; // absolute safety net per piece
+static final int   MAX_PIECES           = 32;     // avoid crazy arrays; tune as you like
+
+// Split a large text into <= MAX_PIECES chunks under MAX_CHARS_PER_INPUT each.
+// Prefers splitting on double newlines, then sentences; falls back to hard slicing.
+static List<String> splitForEmbedding(String raw) {
+  if (raw == null) return List.of("");
+  // Normalize whitespace early to reduce size
+  String text = raw.replaceAll("\\s+", " ").trim();
+  if (text.length() <= MAX_CHARS_PER_INPUT) return List.of(text);
+
+  List<String> pieces = new ArrayList<>();
+  // 1) Split on paragraphs (double newline-like boundaries), then sentences
+  String[] paras = text.split("(?i)(?:\\n\\s*\\n)+|(?<=</p>)"); // handles HTML-ish or plain
+  StringBuilder buf = new StringBuilder();
+
+  // helper to flush buffer
+  Runnable flush = () -> {
+    if (buf.length() > 0) {
+      String s = buf.toString().trim();
+      if (!s.isEmpty()) pieces.add(s.substring(0, Math.min(s.length(), HARD_MAX_CHARS)));
+      buf.setLength(0);
+    }
+  };
+
+  for (String para : paras) {
+    String p = para.trim();
+    if (p.isEmpty()) continue;
+
+    if (p.length() > MAX_CHARS_PER_INPUT) {
+      // Split paragraph into sentences if it exceeds budget
+      String[] sents = p.split("(?<=[.!?])\\s+");
+      for (String sent : sents) {
+        if (buf.length() + sent.length() + 1 > MAX_CHARS_PER_INPUT) flush.run();
+        if (sent.length() > MAX_CHARS_PER_INPUT) {
+          // Very long "sentence": hard slice
+          int start = 0;
+          while (start < sent.length()) {
+            int end = Math.min(start + MAX_CHARS_PER_INPUT, sent.length());
+            pieces.add(sent.substring(start, end));
+            start = end;
+            if (pieces.size() >= MAX_PIECES) break;
+          }
+        } else {
+          if (buf.length() > 0) buf.append(' ');
+          buf.append(sent);
+        }
+        if (pieces.size() >= MAX_PIECES) break;
+      }
+      flush.run();
+    } else {
+      if (buf.length() + p.length() + 1 > MAX_CHARS_PER_INPUT) flush.run();
+      if (buf.length() > 0) buf.append(' ');
+      buf.append(p);
+    }
+    if (pieces.size() >= MAX_PIECES) break;
+  }
+  flush.run();
+
+  // Final safety: if still empty (weird input), return a hard slice
+  if (pieces.isEmpty()) {
+    String s = text.substring(0, Math.min(text.length(), MAX_CHARS_PER_INPUT));
+    pieces.add(s);
+  }
+  return pieces;
+}
+
+  // Mean-pool embeddings across pieces.
+  // Sends a single API call with "input": [piece1, piece2, ...]
+  static float[] openaiEmbedPooled(String text) throws Exception {
+    List<String> inputs = splitForEmbedding(text);
+    // Build JSON: { model, input: [ ... ] }
+    ArrayNode inputArr = mapper.createArrayNode();
+    for (String s : inputs) inputArr.add(s);
+
+    ObjectNode req = mapper.createObjectNode();
+    req.put("model", OPENAI_EMB_MODEL);
+    req.set("input", inputArr);
+
+    Request request = new Request.Builder()
+        .url(OPENAI_BASE_URL + "/v1/embeddings")
+        .header("Authorization", "Bearer " + OPENAI_API_KEY)
+        .header("Content-Type", "application/json")
+        .post(RequestBody.create(req.toString(), MediaType.parse("application/json")))
+        .build();
+
+    try (Response resp = http.newCall(request).execute()) {
+      if (!resp.isSuccessful()) {
+        String body = resp.body() != null ? resp.body().string() : "";
+        throw new RuntimeException("OpenAI error " + resp.code() + ": " + body);
+      }
+      JsonNode root = mapper.readTree(resp.body().byteStream());
+      JsonNode data = root.path("data");
+      if (!data.isArray() || data.size() == 0) throw new RuntimeException("Unexpected embedding response");
+
+      // Determine output dimension from first vector
+      int dim = data.get(0).path("embedding").size();
+      // Conform to configured EMB_DIM (truncate/pad)
+      float[] sum = new float[Math.max(EMB_DIM, dim)];
+      int count = 0;
+
+      for (JsonNode item : data) {
+        JsonNode v = item.path("embedding");
+        if (!v.isArray()) continue;
+        for (int i = 0; i < v.size(); i++) {
+          sum[i] += (float) v.get(i).asDouble();
+        }
+        count++;
+      }
+      if (count == 0) throw new RuntimeException("No embeddings returned");
+
+      // Mean pool and shape to EMB_DIM
+      float[] out = new float[EMB_DIM];
+      for (int i = 0; i < EMB_DIM; i++) {
+        float val = (i < sum.length ? sum[i] : 0f) / count;
+        out[i] = val;
+      }
+      return out;
+    }
   }
 }
