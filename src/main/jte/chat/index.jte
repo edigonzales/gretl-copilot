@@ -17,7 +17,7 @@
         <header class="top-bar">
             <div class="brand">
                 <div class="brand__badge">
-                    <svg viewBox="0 0 24 24" role="presentation"><circle cx="12" cy="12" r="12" /></svg>
+                    <img src="/gretl_logo_hexagon_small.png" alt="GRETL Copilot logo" />
                 </div>
                 <div class="brand__text">
                     <p class="brand__name">GRETL COPILOT</p>
@@ -35,9 +35,7 @@
                     <div class="message__content">
                         <header class="message__header message__header--assistant">
                             <span class="message__title">
-                                <svg viewBox="0 0 24 24" role="img" aria-label="GRETL Copilot icon">
-                                    <circle cx="12" cy="12" r="12" />
-                                </svg>
+                                <img src="/gretl_logo_hexagon_small.png" alt="GRETL Copilot logo" />
                                 <span class="message__author">GRETL Copilot</span>
                             </span>
                             <span class="message__meta">Guided Task Assistant</span>
