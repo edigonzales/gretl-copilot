@@ -9,8 +9,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/chat.css">
-    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-    <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.4/sse.min.js"></script>
 </head>
 <body>
     <main class="app-shell">
@@ -69,14 +69,6 @@
         </section>
     </main>
     <script>
-        var sseSources = new Map();
-
-        document.body.addEventListener('htmx:sseOpen', function (event) {
-            if (event.target && event.detail && event.detail.source) {
-                sseSources.set(event.target, event.detail.source);
-            }
-        });
-
         document.addEventListener('htmx:afterSwap', function (event) {
             if (event.detail.target && event.detail.target.id === 'conversation') {
                 event.detail.target.scrollTop = event.detail.target.scrollHeight;
@@ -84,20 +76,7 @@
         });
 
         document.body.addEventListener('htmx:sseMessage', function (event) {
-            if (!event.detail) {
-                return;
-            }
-
-            if (event.detail.type === 'complete') {
-                var source = sseSources.get(event.target);
-                if (source && typeof source.close === 'function') {
-                    source.close();
-                }
-                sseSources.delete(event.target);
-                if (event.target) {
-                    event.target.removeAttribute('hx-ext');
-                    event.target.removeAttribute('sse-connect');
-                }
+            if (!event.detail || event.detail.eventName !== 'message') {
                 return;
             }
 
