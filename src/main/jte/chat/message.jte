@@ -12,8 +12,7 @@
     </div>
 </article>
 <article class="message message--assistant" hx-ext="sse" sse-connect="/chat/stream/${sessionId}/${messageId}"
-    sse-swap="message" sse-target="#assistant-body-${messageId}" hx-target="#assistant-body-${messageId}" hx-swap="beforeend"
-    sse-close="complete">
+    sse-close="complete" sse-reconnect="none">
     <div class="message__content">
         <header class="message__header message__header--assistant">
             <span class="message__title">
@@ -29,7 +28,7 @@
                 <div class="typing-indicator typing-indicator--inline">
                     <span></span><span></span><span></span>
                 </div>
-                <div class="assistant-body" id="assistant-body-${messageId}"></div>
+                <div class="assistant-body" id="assistant-body-${messageId}" sse-swap="message" hx-swap="beforeend"></div>
             </div>
         </div>
     </div>
