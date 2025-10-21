@@ -6,8 +6,8 @@ import java.util.UUID;
 public class ChatMessage {
     private final UUID id;
     private final ChatRole role;
-    private final String content;
     private final Instant timestamp;
+    private final StringBuilder content;
 
     public ChatMessage(ChatRole role, String content) {
         this(UUID.randomUUID(), role, content, Instant.now());
@@ -16,8 +16,8 @@ public class ChatMessage {
     public ChatMessage(UUID id, ChatRole role, String content, Instant timestamp) {
         this.id = id;
         this.role = role;
-        this.content = content;
         this.timestamp = timestamp;
+        this.content = new StringBuilder(content);
     }
 
     public UUID getId() {
@@ -29,10 +29,19 @@ public class ChatMessage {
     }
 
     public String getContent() {
-        return content;
+        return content.toString();
     }
 
     public Instant getTimestamp() {
         return timestamp;
+    }
+
+    public synchronized void appendContent(String addition) {
+        this.content.append(addition);
+    }
+
+    public synchronized void replaceContent(String newContent) {
+        this.content.setLength(0);
+        this.content.append(newContent);
     }
 }

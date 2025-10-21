@@ -62,26 +62,40 @@ public class ChatService {
         CopilotPrompt prompt = new CopilotPrompt(userMessage, classification, retrievalResult.documents());
 
         return modelClient.streamResponse(prompt)
-                .concatMap(segment -> mapSegment(sessionId, messageId, session, retrievalResult, segment));
+                .concatMap(segment -> mapSegment(sessionId, messageId, session, assistantMessage, retrievalResult, segment))
+                .concatWith(Mono.just(toCompleteEvent()));
     }
 
     private Flux<ServerSentEvent<String>> mapSegment(String sessionId, UUID messageId, ChatSession session,
-            RetrievalResult retrievalResult, CopilotStreamSegment segment) {
+            ChatMessage assistantMessage, RetrievalResult retrievalResult, CopilotStreamSegment segment) {
         return switch (segment.type()) {
-        case TEXT -> Flux.just(toMessageEvent("<span class=\"assistant-token\">" + escapeHtml(segment.content())
-                + " </span>"));
+        case TEXT -> {
+            String token = segment.content();
+            assistantMessage.appendContent(token + " ");
+            yield Flux
+                    .just(toMessageEvent("<span class=\"assistant-token\">" + escapeHtml(token) + " </span>"));
+        }
         case CODE_BLOCK -> {
             session.registerBuildGradle(messageId, segment.content());
+            assistantMessage.appendContent("\n\n```gradle\n" + segment.content() + "\n```");
             String codeId = "code-" + messageId;
             String codeHtml = buildCodeBlockHtml(sessionId, messageId, codeId, segment.content());
             yield Flux.just(toMessageEvent(codeHtml));
         }
-        case LINKS -> Flux.just(toMessageEvent(buildLinksHtml(retrievalResult.documents())));
+        case LINKS -> {
+            String linksHtml = buildLinksHtml(retrievalResult.documents());
+            assistantMessage.appendContent("\n\n" + stripHtmlTags(linksHtml));
+            yield Flux.just(toMessageEvent(linksHtml));
+        }
         };
     }
 
     private ServerSentEvent<String> toMessageEvent(String html) {
         return ServerSentEvent.<String>builder().event("message").data(html).build();
+    }
+
+    private ServerSentEvent<String> toCompleteEvent() {
+        return ServerSentEvent.<String>builder().event("complete").data("").build();
     }
 
     private String buildCodeBlockHtml(String sessionId, UUID messageId, String codeId, String content) {
@@ -127,6 +141,10 @@ public class ChatService {
             }
         });
         return sb.toString();
+    }
+
+    private String stripHtmlTags(String input) {
+        return input.replaceAll("<[^>]+>", "");
     }
 
     public Mono<byte[]> loadBuildGradle(String sessionId, UUID messageId) {

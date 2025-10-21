@@ -75,7 +75,17 @@
             }
         });
 
-        document.body.addEventListener('htmx:sseMessage', function () {
+        document.body.addEventListener('htmx:sseMessage', function (event) {
+            if (event.detail && event.detail.elt) {
+                var target = event.detail.elt;
+                if (target.classList && target.classList.contains('assistant-body')) {
+                    var indicator = target.previousElementSibling;
+                    if (indicator && indicator.classList.contains('typing-indicator')) {
+                        indicator.remove();
+                    }
+                }
+            }
+
             var conversation = document.getElementById('conversation');
             if (conversation) {
                 conversation.scrollTop = conversation.scrollHeight;
