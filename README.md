@@ -77,3 +77,32 @@ Re-embed existing rows for best results.
 - The whitelist is in `ingest_gretl.java` (`ALLOWLIST`). By default only `reference.html` is crawled.
 - For production, **change the read-only password** in `initdb/02_readonly_user.sql` before first start.
 - Create IVFFLAT indexes after ingest (tune `lists` for your dataset size).
+
+## INTERLIS GLSP prototype
+
+The repository now bundles a proof-of-concept [Eclipse GLSP](https://www.eclipse.org/glsp/) server and the matching VS Code
+extension that render INTERLIS models as UML class diagrams. The implementation lives in the new `glsp/` Gradle project and
+the `client/` package. The main moving parts are:
+
+| Class | Responsibility |
+|-------|----------------|
+| `InterlisGlspServerLauncher` | boots the socket-based GLSP server and wires the Guice modules. |
+| `InterlisServerModule` | registers the INTERLIS diagram module with the GLSP runtime. |
+| `InterlisDiagramModule` | binds the diagram configuration, GModel factory and source-model storage. |
+| `InterlisDiagramConfiguration` | declares the diagram/shape types that are exchanged between server and client. |
+| `InterlisDiagramGModelFactory` | builds the GLSP `GModelRoot`; currently it returns a single red placeholder rectangle. |
+| `InterlisSourceModelStorage` | watches `.ili` files, forwards their content to the model submission handler and caches the URI. |
+| `Ili2cCompiler` | prepares integration with `ili2c` so the textual model can be compiled for richer diagrams. |
+| `InterlisUmlDiagram` | skeleton abstraction that will hold UML nodes/edges generated from the `ili2c` transfer description. |
+
+The VS Code extension exposes the command **INTERLIS: Open GLSP class diagram**. When executed it opens a custom editor next to
+the text editor and connects to the running GLSP server via the quickstart socket integration provided by `@eclipse-glsp/vscode-integration`.
+The bundled webview loads the GLSP client bundle from `media/main.js` and renders the placeholder rectangle using CSS styles that
+work in light and dark VS Code themes.
+
+### Testing
+
+The prototype now includes automated checks for both components:
+
+- `./gradlew -p glsp test` exercises the placeholder GModel factory via JUnit.
+- `npm install && npm run test` (from `client/`) runs the Vitest suite that verifies the VS Code command helper and webview setup.

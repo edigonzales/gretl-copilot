@@ -1,0 +1,60 @@
+{
+  "name": "interlis-glsp-diagram",
+  "displayName": "INTERLIS GLSP Diagram",
+  "description": "Provides a GLSP based UML class diagram view for INTERLIS models.",
+  "publisher": "ch.so.agi",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.84.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:interlis.openGlspDiagram"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "interlis.openGlspDiagram",
+        "title": "INTERLIS: Open GLSP class diagram"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "interlis.glsp.diagram",
+        "displayName": "INTERLIS UML Diagram",
+        "selector": [
+          {
+            "filenamePattern": "*.ili"
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p . && npm run bundle:webview",
+    "bundle:webview": "esbuild src/webview/main.ts --bundle --outfile=media/main.js --format=iife --platform=browser --external:vscode --sourcemap",
+    "lint": "eslint src --ext .ts",
+    "package": "npm run compile",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "@types/vscode": "1.84.0",
+    "esbuild": "0.24.0",
+    "eslint": "9.15.0",
+    "@typescript-eslint/eslint-plugin": "8.15.0",
+    "@typescript-eslint/parser": "8.15.0",
+    "typescript": "5.6.3",
+    "vitest": "1.6.0"
+  },
+  "dependencies": {
+    "@eclipse-glsp/client": "2.4.0",
+    "@eclipse-glsp/protocol": "2.4.0",
+    "@eclipse-glsp/vscode-integration": "2.5.0",
+    "vscode-messenger": "0.5.1",
+    "vscode-messenger-common": "0.5.1"
+  }
+}

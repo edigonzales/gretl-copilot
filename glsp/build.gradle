@@ -1,0 +1,49 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+apply from: 'versioning.gradle'
+
+group = 'ch.so.agi.interlis.glsp'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'https://jars.sogeo.services/mirror' }
+}
+
+ext {
+    set('glspVersion', '2.4.0')
+}
+
+dependencies {
+    implementation "org.eclipse.glsp:org.eclipse.glsp.server:${glspVersion}"
+    implementation "org.eclipse.glsp:org.eclipse.glsp.graph:${glspVersion}"
+    implementation 'com.google.inject:guice:5.1.0'
+    implementation 'javax.inject:javax.inject:1'
+    implementation 'org.apache.logging.log4j:log4j-api:2.24.3'
+    implementation 'org.apache.logging.log4j:log4j-core:2.24.3'
+    implementation 'org.apache.logging.log4j:log4j-slf4j2-impl:2.24.3'
+    implementation 'org.slf4j:slf4j-api:2.0.16'
+
+    implementation 'ch.interlis:ili2c-tool:5.6.6'
+    implementation 'ch.interlis:ili2c-core:5.6.6'
+    implementation 'ch.ehi:ehibasics:1.4.1'
+    implementation 'ch.interlis:iox-ili:1.24.1'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.3'
+}
+
+application {
+    mainClass = 'ch.so.agi.interlis.glsp.InterlisGlspServerLauncher'
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
