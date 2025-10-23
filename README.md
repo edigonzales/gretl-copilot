@@ -29,6 +29,67 @@ export OPENAI_EMBED_MODEL=text-embedding-3-small
 jbang ingest_gretl.java
 ```
 
+## Copilot request flow
+
+```mermaid
+sequenceDiagram
+    participant U as User Browser
+    participant CC as ChatController
+    participant CS as ChatService
+    participant IC as IntentClassifier
+    participant RS as RetrievalService
+    participant PB as CopilotPromptBuilder
+    participant MC as CopilotModelClient
+    participant LLM as ChatModel (OpenAI)
+
+    U->>CC: POST /chat/message
+    CC->>CS: handleUserMessage(sessionId, text)
+    CS->>CS: Append user + placeholder messages
+    CC-->>U: Render chat/message fragment
+
+    U->>CC: GET /chat/stream/{sessionId}/{messageId}
+    CC->>CS: streamAssistantResponse(...)
+    CS->>IC: classify(userMessage)
+    IC-->>CS: IntentClassification
+    CS->>RS: retrieve(userMessage, classification)
+    RS-->>CS: RetrievalResult with documents
+    CS->>MC: streamResponse(prompt)
+    MC->>PB: build(prompt)
+    PB-->>MC: Prompt with system + context
+    MC->>LLM: call(prompt)
+    LLM-->>MC: Structured response content
+    MC-->>CS: Stream segments (text/code/links)
+    CS->>CS: Persist updates in session
+    CS-->>CC: Server-Sent Events
+    CC-->>U: Stream assistant response
+```
+
+### Sequence details and examples
+
+- **`POST /chat/message` → `handleUserMessage(sessionId, text)`**  
+  The browser submits the raw chat text. Example: `"Kannst du mir die Pflicht-Properties für den CSV→Postgres Import zeigen?"`. The controller forwards it to `ChatService.handleUserMessage`, which creates the chat session if it does not exist yet and persists the user turn together with a placeholder assistant message.
+
+- **`Append user + placeholder messages` → `Render chat/message fragment`**  
+  The newly stored exchange is immediately rendered back to the UI so the user sees their message and a pending assistant bubble while the backend gathers context.
+
+- **`GET /chat/stream/{sessionId}/{messageId}` → `streamAssistantResponse(...)`**  
+  The frontend opens a Server-Sent Events stream for the pending assistant message. `ChatService.streamAssistantResponse` orchestrates the asynchronous steps that follow and writes tokens to the stream as soon as they are available.
+
+- **`classify(userMessage)` → `IntentClassification`**  
+  `IntentClassifier` inspects the latest user message to decide which GRETL topic is relevant. For the CSV question above, the classifier might emit `label="import.csv-postgres"`, `confidence=0.88`, and a rationale such as `"Frage erwähnt CSV und PostGIS-Zieltabelle."`. These hints determine which examples and documents the retriever should load.
+
+- **`retrieve(userMessage, classification)` → `RetrievalResult`**  
+  `RetrievalService` queries the vector store with the user text and the detected intent. Continuing the example, it could return the `CsvImport` task description and property snippets so the model has concrete documentation to cite.
+
+- **`streamResponse(prompt)` → `build(prompt)` → `call(prompt)`**  
+  `CopilotModelClient` assembles a streaming chat request. It delegates to `CopilotPromptBuilder` to compose the system message, classification summary, and retrieved context. The resulting prompt is sent to the configured `ChatModel` (OpenAI in production).
+
+- **`Structured response content` → `Stream segments (text/code/links)`**  
+  The OpenAI response is parsed into structured chunks—plain text, code blocks, and resource links. As tokens arrive, the client pushes each segment back to the `ChatService`, which updates the session transcript.
+
+- **`Persist updates in session` → `Server-Sent Events` → `Stream assistant response`**  
+  The completed assistant turn is stored with all metadata. Each streamed chunk is forwarded over the open SSE connection so the user interface progressively displays the answer with tables, code fences, and links formatted according to the system prompt.
+
 ## Exporting data as INSERT statements
 
 You can dump the ingested data as plain `INSERT` commands for use in
