@@ -35,17 +35,33 @@ public class OpenAiCopilotModelClient implements CopilotModelClient {
 
     @Override
     public Flux<CopilotStreamSegment> streamResponse(CopilotPrompt prompt) {
+        if (log.isDebugEnabled()) {
+            log.debug("streamResponse() building prompt for intent {} with {} documents",
+                    prompt.classification() != null ? prompt.classification().label() : "<none>",
+                    prompt.documents() == null ? 0 : prompt.documents().size());
+        }
         Prompt llmPrompt = promptBuilder.build(prompt);
 
         String content;
         try {
+            if (log.isDebugEnabled()) {
+                log.debug("Invoking ChatModel {} via call()", chatModel.getClass().getSimpleName());
+            }
             content = chatModel.call(llmPrompt).getResult().getOutput().getText();
+            if (log.isDebugEnabled()) {
+                String preview = content == null ? "" : content.substring(0, Math.min(content.length(), 200));
+                log.debug("ChatModel call completed; received {} characters. Preview: {}", content == null ? 0 : content.length(),
+                        preview);
+            }
         } catch (Exception ex) {
             log.error("Chat model invocation failed", ex);
             return Flux.error(ex);
         }
 
         List<CopilotStreamSegment> segments = toSegments(content, prompt);
+        if (log.isDebugEnabled()) {
+            log.debug("streamResponse() produced {} segments", segments.size());
+        }
         return Flux.fromIterable(segments);
     }
 

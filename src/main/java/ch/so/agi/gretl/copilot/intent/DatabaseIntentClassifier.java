@@ -49,6 +49,10 @@ public class DatabaseIntentClassifier implements IntentClassifier {
 
     @Override
     public IntentClassification classify(String userMessage) {
+        if (log.isDebugEnabled()) {
+            String preview = userMessage == null ? "" : userMessage.substring(0, Math.min(userMessage.length(), 120));
+            log.debug("classify() invoked with message preview: '{}'", preview);
+        }
         if (!StringUtils.hasText(userMessage)) {
             return new IntentClassification(properties.getFallbackLabel(), 0.0,
                     "Leere Benutzereingabe – kein Intent bestimmbar.");
@@ -57,6 +61,10 @@ public class DatabaseIntentClassifier implements IntentClassifier {
         float[] embedding = embed(userMessage);
         if (embedding.length == 0) {
             return fallback("Embedding konnte nicht erzeugt werden.");
+        }
+
+        if (log.isDebugEnabled()) {
+            log.debug("Embedding created with {} dimensions", embedding.length);
         }
 
         List<IntentCandidate> candidates = fetchCandidates(embedding, properties.getTopK());
@@ -69,17 +77,30 @@ public class DatabaseIntentClassifier implements IntentClassifier {
         String rationale = buildRationale(best, candidates);
 
         if (confidence < properties.getMinConfidence()) {
+            if (log.isDebugEnabled()) {
+                log.debug("Confidence {} below threshold {}; using fallback", confidence, properties.getMinConfidence());
+            }
             return new IntentClassification(properties.getFallbackLabel(), properties.getFallbackConfidence(), rationale);
         }
 
-        return new IntentClassification(toLabel(best.taskName()), confidence, rationale);
+        IntentClassification classification = new IntentClassification(toLabel(best.taskName()), confidence, rationale);
+        if (log.isDebugEnabled()) {
+            log.debug("Returning classification {} with confidence {}", classification.label(), classification.confidence());
+        }
+        return classification;
     }
 
     private IntentClassification fallback(String reason) {
+        if (log.isDebugEnabled()) {
+            log.debug("fallback() returning fallback label due to: {}", reason);
+        }
         return new IntentClassification(properties.getFallbackLabel(), clamp(properties.getFallbackConfidence()), reason);
     }
 
     private float[] embed(String text) {
+        if (log.isDebugEnabled()) {
+            log.debug("embed() generating embedding via {}", embeddingModel.getClass().getSimpleName());
+        }
         try {
             Document document = new Document(text);
             return embeddingModel.embed(document);
@@ -93,16 +114,23 @@ public class DatabaseIntentClassifier implements IntentClassifier {
         if (limit <= 0) {
             return List.of();
         }
+        if (log.isDebugEnabled()) {
+            log.debug("fetchCandidates() querying rag.task_examples with topK={}", limit);
+        }
         try {
-            return jdbcClient.sql(INTENT_QUERY)
+            List<IntentCandidate> results = jdbcClient.sql(INTENT_QUERY)
                     .param(new PGvector(embedding))
                     .param(new PGvector(embedding))
                     .param(limit)
                     .query(intentRowMapper())
-                    .list()
-                    .stream()
+                    .list();
+            List<IntentCandidate> sorted = results.stream()
                     .sorted(Comparator.comparingDouble(IntentCandidate::similarity).reversed())
                     .toList();
+            if (log.isDebugEnabled()) {
+                log.debug("fetchCandidates() received {} candidates", sorted.size());
+            }
+            return sorted;
         } catch (DataAccessException ex) {
             log.error("Failed to run intent classification query", ex);
             return List.of();
