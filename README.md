@@ -75,8 +75,8 @@ sequenceDiagram
 - **`GET /chat/stream/{sessionId}/{messageId}` → `streamAssistantResponse(...)`**  
   The frontend opens a Server-Sent Events stream for the pending assistant message. `ChatService.streamAssistantResponse` orchestrates the asynchronous steps that follow and writes tokens to the stream as soon as they are available.
 
-- **`classify(userMessage)` → `IntentClassification`**  
-  `IntentClassifier` inspects the latest user message to decide which GRETL topic is relevant. For the CSV question above, the classifier might emit `label="import.csv-postgres"`, `confidence=0.88`, and a rationale such as `"Frage erwähnt CSV und PostGIS-Zieltabelle."`. These hints determine which examples and documents the retriever should load.
+- **`classify(userMessage)` → `IntentClassification`**
+  `IntentClassifier` embeds the user question and compares it against the curated examples stored in `rag.task_examples`. The closest match determines the intent label (e.g. `label="task.csvimport"`, `confidence=0.88` with rationale `"Frage erwähnt CSV und PostGIS-Zieltabelle."`). These hints determine which Beispiele und Dokumente die Retrieval-Schicht laden soll und liefern dem Prompt zusätzliche Motivation.
 
 - **`retrieve(userMessage, classification)` → `RetrievalResult`**  
   `RetrievalService` queries the vector store with the user text and the detected intent. Continuing the example, it could return the `CsvImport` task description and property snippets so the model has concrete documentation to cite.
@@ -87,8 +87,13 @@ sequenceDiagram
 - **`Structured response content` → `Stream segments (text/code/links)`**  
   The OpenAI response is parsed into structured chunks—plain text, code blocks, and resource links. As tokens arrive, the client pushes each segment back to the `ChatService`, which updates the session transcript.
 
-- **`Persist updates in session` → `Server-Sent Events` → `Stream assistant response`**  
+- **`Persist updates in session` → `Server-Sent Events` → `Stream assistant response`**
   The completed assistant turn is stored with all metadata. Each streamed chunk is forwarded over the open SSE connection so the user interface progressively displays the answer with tables, code fences, and links formatted according to the system prompt.
+
+### Intent classifier tuning
+
+- **Vektorbasierte Zuordnung:** `DatabaseIntentClassifier` nutzt die Embeddings aus `rag.task_examples`, um die Anfrage den vorhandenen GRETL-Tasks zuzuordnen. Damit die Qualität hoch bleibt, sollten für neue Tasks auch Beispiele mit Embeddings eingespielt werden.
+- **Konfigurierbare Schwellenwerte:** Über `gretl.copilot.intent.*` lässt sich steuern, wie viele Kandidaten geprüft werden (`top-k`), ab welcher Ähnlichkeit ein Intent akzeptiert wird (`min-confidence`) und welches Fallback-Label bei unsicheren Treffern zurückgegeben wird.
 
 ## Exporting data as INSERT statements
 

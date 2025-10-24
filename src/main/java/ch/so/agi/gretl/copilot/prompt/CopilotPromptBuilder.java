@@ -107,7 +107,7 @@ public class CopilotPromptBuilder {
     }
 
     private static FewShotExample validierungExample() {
-        IntentClassification classification = new IntentClassification("validierung.interlis", 0.91,
+        IntentClassification classification = new IntentClassification("task.ili2pgvalidate", 0.91,
                 "Schlüsselwörter zu ili2pg Validate erkannt.");
 
         List<RetrievedDocument> docs = List.of(
@@ -146,7 +146,7 @@ public class CopilotPromptBuilder {
     }
 
     private static FewShotExample csvToPostgresExample() {
-        IntentClassification classification = new IntentClassification("import.csv-postgres", 0.88,
+        IntentClassification classification = new IntentClassification("task.csvimport", 0.88,
                 "Frage erwähnt CSV und PostGIS-Zieltabelle.");
 
         List<RetrievedDocument> docs = List.of(
@@ -190,7 +190,7 @@ public class CopilotPromptBuilder {
     }
 
     private static FewShotExample sqlExecutionExample() {
-        IntentClassification classification = new IntentClassification("sql.execution", 0.86,
+        IntentClassification classification = new IntentClassification("task.sqlexecutor", 0.86,
                 "Stichworte zu Skript-Ausführung erkannt.");
 
         List<RetrievedDocument> docs = List.of(
@@ -227,7 +227,7 @@ public class CopilotPromptBuilder {
     }
 
     private static FewShotExample exportExample() {
-        IntentClassification classification = new IntentClassification("export.interlis", 0.89,
+        IntentClassification classification = new IntentClassification("task.ili2pgexport", 0.89,
                 "Begriffe zu INTERLIS-Export erkannt.");
 
         List<RetrievedDocument> docs = List.of(
@@ -267,7 +267,7 @@ public class CopilotPromptBuilder {
     }
 
     private static FewShotExample iliValidatorExample() {
-        IntentClassification classification = new IntentClassification("validation.ilivalidator", 0.9,
+        IntentClassification classification = new IntentClassification("task.ilivalidator", 0.9,
                 "Explizite Nachfrage nach iliValidator.");
 
         List<RetrievedDocument> docs = List.of(
