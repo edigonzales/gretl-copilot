@@ -76,9 +76,8 @@ public class ChatService {
             ChatMessage assistantMessage, RetrievalResult retrievalResult, CopilotStreamSegment segment) {
         return switch (segment.type()) {
         case TEXT -> {
-            String markdown = segment.content();
-            assistantMessage.appendContent(markdown);
-            String html = markdownRenderer.render(markdown);
+            assistantMessage.appendContent(segment.content());
+            String html = markdownRenderer.render(assistantMessage.getContent());
             yield StringUtils.hasText(html) ? Flux.just(toMessageEvent(html)) : Flux.empty();
         }
         case CODE_BLOCK -> {
