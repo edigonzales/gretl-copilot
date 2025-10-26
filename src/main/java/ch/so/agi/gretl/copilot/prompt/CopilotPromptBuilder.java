@@ -37,8 +37,9 @@ public class CopilotPromptBuilder {
             - Ansonsten die gleiche Tabellenstruktur wie oben und knappe Beschreibungen.
 
             ## Beispiel-Task
-            - Wenn ein Beispiel sinnvoll ist, gib einen vollständigen Gradle-Task in einem ```gradle```-Codeblock an.
+            - Wenn ein Beispiel sinnvoll ist, gib einen vollständigen Gradle-Task in einem ```gradle```-Codeblock an. Verzichte auf ein vollständiges Gradle Build-Script.
             - Wenn noch Informationen fehlen, erkläre stattdessen, welche Angaben benötigt werden.
+            - Falls ein Task eine Datenbankverbindung benötigt, schreibe einfach "[dbUrl, dbUser, dbPwd]" als Wert für das Property.
 
             Fehlerhandling:
             - Fehlen wesentliche Angaben (z. B. Dateipfade, DB-Verbindungsdaten), bitte höflich nachfragen oder auf Limitierungen hinweisen.
@@ -108,47 +109,47 @@ public class CopilotPromptBuilder {
 
     private static FewShotExample validierungExample() {
         IntentClassification classification = new IntentClassification("task.ili2pgvalidate", 0.91,
-                "Schlüsselwörter zu ili2pg Validate erkannt.");
-
+                "Schlüsselwörter zu ili2pg Validate erkannt.", List.of());
+        
         List<RetrievedDocument> docs = List.of(
-                new RetrievedDocument("Tasks", "Ili2pgValidate", "Validiert INTERLIS-Transferdateien gegen ein Modell.",
+                new RetrievedDocument("Tasks", "Ili2pgValidate", "Validiert Daten in der Datenbank gegen ein Modell.",
                         "https://gretl.app/reference.html#Ili2pgValidate", 0.89),
                 new RetrievedDocument("Properties", "Pflichtparameter", "dataset und models sind zwingend anzugeben.",
                         "https://gretl.app/reference.html#Ili2pgValidate-properties", 0.72));
 
         String assistant = """
                 ## Beschreibung
-                Verwende die Task `ch.so.agi.gretl.tasks.Ili2pgValidate`, um die INTERLIS-Datei gegen das angegebene Modell zu prüfen und einen Validierungsbericht zu erzeugen.
+                Verwende den Task `ch.so.agi.gretl.tasks.Ili2pgValidate`, um die Daten in der Datenbank mit ilivalidator gegenüber einem INTERLIS-Datenmodell zu prüfen.
 
                 ## Pflicht-Properties
                 | Property | Typ | Pflicht | Standardwert | Beschreibung |
                 | dataset | Path | Ja | – | Pfad zur zu validierenden INTERLIS-Transferdatei (`.xtf`). |
-                | models | String | Ja | – | Modellnamen oder Pfad zur Modellablage (z. B. `SO_AFU_Liegenschaften_2020`). |
 
                 ## Optionale Properties
                 | Property | Typ | Pflicht | Standardwert | Beschreibung |
-                | logFile | Path | Nein | – | Datei für den ausführlichen Validierungsreport. |
-                | failOnError | Boolean | Nein | true | Stoppt die Pipeline bei Validierungsfehlern sofort. |
-                | configFile | Path | Nein | – | Optionale iliValidator-Konfigurationsdatei. |
+                | models | String | Ja | – | Modellnamen oder Pfad zur Modellablage (z. B. `SO_AFU_Liegenschaften_2020`). |
+                | logFile | Property<File> | Nein | – | Datei für den ausführlichen Validierungsreport. |
 
                 ## Beispiel-Task
                 ```gradle
-                task validateParzellen(type: ch.so.agi.gretl.tasks.Ili2pgValidate) {
-                    dataset = file("data/parzellen.xtf")
-                    models = "SO_AFU_Liegenschaften_2020"
-                    logFile = file("${buildDir}/reports/validation.log")
+                tasks.register('validateParzellen', Ili2pgValidate) {
+                    database = [db_uri, db_user, db_pass]
+                    models = "SO_AGI_AV_GB_Administrative_Einteilungen_20180613"
+                    modeldir = rootProject.projectDir.toString() + ";http://models.interlis.ch"
+                    dbschema = "agi_av_gb_admin_einteilungen_fail"
+                    logFile = file("fubar.log")
                 }
                 ```
                 """;
 
-        return new FewShotExample("Validierung", "Ich muss ein neues INTERLIS-Transferfile vor dem Import prüfen.",
+        return new FewShotExample("Validierung", "Ich muss Daten vor dem Export aus der Datenbank prüfen.",
                 classification, docs, assistant);
     }
 
     private static FewShotExample csvToPostgresExample() {
         IntentClassification classification = new IntentClassification("task.csvimport", 0.88,
-                "Frage erwähnt CSV und PostGIS-Zieltabelle.");
-
+                "Frage erwähnt CSV und PostGIS-Zieltabelle.", List.of());
+                
         List<RetrievedDocument> docs = List.of(
                 new RetrievedDocument("Tasks", "CsvImport", "Importiert strukturierte CSV-Dateien in eine PostGIS-Tabelle.",
                         "https://gretl.app/reference.html#CsvImport", 0.84),
@@ -162,8 +163,8 @@ public class CopilotPromptBuilder {
 
                 ## Pflicht-Properties
                 | Property | Typ | Pflicht | Standardwert | Beschreibung |
-                | database | String | Ja | – | JDBC-Verbindungszeichenfolge inkl. Benutzer und Passwort. |
-                | schemaName | String | Ja | – | Schema, in das die Daten importiert werden sollen. |
+                | database | ListProperty<String> | Ja | – | JDBC-URL inklusive Zugangsdaten. |
+                | schemaName | String | Nein | – | Schema, in das die Daten importiert werden sollen. |
                 | tableName | String | Ja | – | Ziel-Tabelle für den Import. |
                 | file | Path | Ja | – | Pfad zur CSV-Datei. |
 
@@ -171,28 +172,29 @@ public class CopilotPromptBuilder {
                 | Property | Typ | Pflicht | Standardwert | Beschreibung |
                 | delimiter | String | Nein | ; | Feldtrenner der CSV-Datei. |
                 | quoteChar | String | Nein | " | Zeichen für Text-Kapselung. |
-                | srid | Integer | Nein | 2056 | SRID für allfällige Geometriespalten. |
+                | schemaName | String | Nein | – | Schema, in das die Daten importiert werden sollen. |
 
                 ## Beispiel-Task
                 ```gradle
-                task importBodenbedeckung(type: ch.so.agi.gretl.tasks.CsvImport) {
-                    database = "jdbc:postgresql://localhost:5432/gretl?user=gretl&password=secret"
+                tasks.register('importBodenbedeckung', CsvImport) {
+                    database = [db_uri, db_user, db_pass]
                     schemaName = "boden"
                     tableName = "bodenbedeckung"
-                    file = file("data/bodenbedeckung.csv")
+                    firstLineIsHeader = true
+                    dataFile = file("data/bodenbedeckung.csv")
                     delimiter = ","
                 }
                 ```
                 """;
 
-        return new FewShotExample("CSV→Postgres", "Wie bringe ich eine CSV-Datei in eine bestehende PostGIS-Tabelle?",
+        return new FewShotExample("CSV→Postgres", "Wie bringe ich eine CSV-Datei in eine bestehende PostGIS/PostgreSQL-Tabelle?",
                 classification, docs, assistant);
     }
 
     private static FewShotExample sqlExecutionExample() {
         IntentClassification classification = new IntentClassification("task.sqlexecutor", 0.86,
-                "Stichworte zu Skript-Ausführung erkannt.");
-
+                "Stichworte zu Skript-Ausführung erkannt.", List.of());
+        
         List<RetrievedDocument> docs = List.of(
                 new RetrievedDocument("Tasks", "SqlExecutor",
                         "Führt SQL-Skripte oder Statements gegen eine konfigurierte Datenbank aus.",
@@ -200,35 +202,35 @@ public class CopilotPromptBuilder {
 
         String assistant = """
                 ## Beschreibung
-                Setze `ch.so.agi.gretl.tasks.SqlExecutor` ein, um das bereitgestellte SQL-Skript innerhalb der GRETL-Pipeline auszuführen.
+                Setze `ch.so.agi.gretl.tasks.SqlExecutor` ein, um das bereitgestellte SQL-Skript innerhalb der Datenbank auszuführen.
 
                 ## Pflicht-Properties
                 | Property | Typ | Pflicht | Standardwert | Beschreibung |
-                | database | String | Ja | – | JDBC-URL inklusive Zugangsdaten. |
-                | sqlFile | Path | Ja | – | Pfad zum SQL-Skript, das ausgeführt werden soll. |
+                | database | ListProperty<String> | Ja | – | JDBC-URL inklusive Zugangsdaten. |
+                | sqlFile | Property<FileCollection> | Ja | – | SQL-Skript-Dateien, die ausgeführt werden soll. |
 
                 ## Optionale Properties
                 | Property | Typ | Pflicht | Standardwert | Beschreibung |
-                | autocommit | Boolean | Nein | false | Führt jedes Statement in einer eigenen Transaktion aus. |
-                | stopOnError | Boolean | Nein | true | Bricht bei Fehlern sofort ab. |
+                | sqlParameters | Property<Object> | Nein | - | Eine Map mit Paaren von Parameter-Name und Parameter-Wert (Map<String,String>). Oder eine Liste mit Paaren von Parameter-Name und Parameter-Wert (List<Map<String,String>>). |
 
                 ## Beispiel-Task
                 ```gradle
-                task runCleanup(type: ch.so.agi.gretl.tasks.SqlExecutor) {
-                    database = "jdbc:postgresql://localhost:5432/gretl?user=gretl&password=secret"
+                tasks.register('runCleanup', SqlExecutor) {
+                    database = [db_uri, db_user, db_pass]
                     sqlFile = file("sql/cleanup.sql")
-                    stopOnError = true
                 }
                 ```
                 """;
 
-        return new FewShotExample("SQL-Ausführung", "Ich möchte ein SQL-Skript am Ende der Pipeline laufen lassen.",
+
+        return new FewShotExample("SQL-Ausführung", "Ich möchte ein SQL-Skript in deiner Datenbank laufen lassen.",
                 classification, docs, assistant);
     }
 
-    private static FewShotExample exportExample() {
+    private static FewShotExample exportExample() {        
         IntentClassification classification = new IntentClassification("task.ili2pgexport", 0.89,
-                "Begriffe zu INTERLIS-Export erkannt.");
+                "Begriffe zu INTERLIS-Export erkannt.", List.of());
+        
 
         List<RetrievedDocument> docs = List.of(
                 new RetrievedDocument("Tasks", "Ili2pgExport",
@@ -237,28 +239,27 @@ public class CopilotPromptBuilder {
 
         String assistant = """
                 ## Beschreibung
-                Verwende `ch.so.agi.gretl.tasks.Ili2pgExport`, um Daten aus der PostGIS-Tabelle wieder als INTERLIS-Datei auszugeben.
+                Verwende `ch.so.agi.gretl.tasks.Ili2pgExport`, um Daten aus der PostGIS/PostgreSQL-Tabelle wieder als INTERLIS-Datei auszugeben.
 
                 ## Pflicht-Properties
                 | Property | Typ | Pflicht | Standardwert | Beschreibung |
-                | database | String | Ja | – | JDBC-Verbindung zur Quell-Datenbank. |
-                | dataset | Path | Ja | – | Pfad zur Ziel-XTF-Datei, die geschrieben werden soll. |
-                | models | String | Ja | – | Modell(e), für die exportiert werden soll. |
+                | database | ListProperty<String> | Ja | – | JDBC-Verbindung zur Quell-Datenbank. |
 
                 ## Optionale Properties
                 | Property | Typ | Pflicht | Standardwert | Beschreibung |
                 | schema | String | Nein | public | Schema, aus dem exportiert wird. |
                 | disableValidation | Boolean | Nein | false | Überspringt die abschließende Validierung. |
-                | additionalSettings | Map | Nein | – | Weitere ili2pg-Schalter im Schlüssel/Wert-Format. |
+                | dataset | Property<Object> | Nein | – | Pfad zur Ziel-XTF-Datei, die geschrieben werden soll. |
+                | models | String | Nein | – | Modell(e), für die exportiert werden soll. |
+
 
                 ## Beispiel-Task
                 ```gradle
-                task exportParzellen(type: ch.so.agi.gretl.tasks.Ili2pgExport) {
-                    database = "jdbc:postgresql://localhost:5432/gretl?user=gretl&password=secret"
-                    schema = "parzellen"
-                    dataset = file("build/export/parzellen.xtf")
-                    models = "SO_AFU_Liegenschaften_2020"
-                }
+                tasks.register('exportParzellen', Ili2pgExport) {
+                    database = [db_uri, db_user, db_pass]
+                    dataFile = files("254900-out.xtf","255000-out.xtf")
+                    dataset = ["254900","255000"]
+                    logFile = file("ili2pg.log")                }
                 ```
                 """;
 
@@ -266,9 +267,10 @@ public class CopilotPromptBuilder {
                 docs, assistant);
     }
 
-    private static FewShotExample iliValidatorExample() {
+    private static FewShotExample iliValidatorExample() {        
         IntentClassification classification = new IntentClassification("task.ilivalidator", 0.9,
-                "Explizite Nachfrage nach iliValidator.");
+                "Explizite Nachfrage nach iliValidator.", List.of());
+        
 
         List<RetrievedDocument> docs = List.of(
                 new RetrievedDocument("Tools", "IliValidator Integration",
@@ -277,22 +279,22 @@ public class CopilotPromptBuilder {
 
         String assistant = """
                 ## Beschreibung
-                Nutze die Task `ch.so.agi.gretl.tasks.IliValidator`, um den offiziellen iliValidator mit benutzerdefiniertem Konfigurationsfile auszuführen.
+                Nutze den Task `ch.so.agi.gretl.tasks.IliValidator`, um den offiziellen iliValidator mit benutzerdefiniertem Konfigurationsfile auszuführen.
 
                 ## Pflicht-Properties
-                | Property | Typ | Pflicht | Standardwert | Beschreibung |
-                | dataset | Path | Ja | – | Zu prüfendes Transferfile. |
-                | configFile | Path | Ja | – | iliValidator-Konfiguration, z. B. mit Modelldirectory und Checks. |
+                _Keine._
 
                 ## Optionale Properties
                 | Property | Typ | Pflicht | Standardwert | Beschreibung |
+                | dataFiles | FileCollection | Nein | – | Liste der Dateien, die validiert werden sollen. Eine leere Liste ist kein Fehler. |
+                | configFile | Object | Nein | – | Konfiguriert die Datenprüfung mit Hilfe einer ini-Datei (um z.B. die Prüfung von einzelnen Constraints auszuschalten). Siehe https://github.com/claeis/ilivalidator/blob/master/docs/ilivalidator.rst#konfiguration. File, falls eine lokale Datei verwendet wird. String, falls eine Datei aus einem Daten-Repository verwendet wird. |
                 | logFile | Path | Nein | – | Ausgabe des Validators als Protokolldatei. |
-                | failOnError | Boolean | Nein | true | Liefert einen Build-Fehler bei gefundenen Fehlern. |
+                | failOnError | Boolean | Nein | true | Steuert, ob der Task bei einem Validierungsfehler fehlschlägt. |
 
                 ## Beispiel-Task
                 ```gradle
-                task validateMitConfig(type: ch.so.agi.gretl.tasks.IliValidator) {
-                    dataset = file("data/ligdi.xtf")
+                tasks.register('validateMitConfig', IliValidator) {
+                    dataFiles = files("Beispiel2a.xtf")
                     configFile = file("config/validator.ini")
                     logFile = file("${buildDir}/logs/validator.log")
                 }

@@ -8,6 +8,8 @@ public class IntentClassifierProperties {
     private double minConfidence = 0.45;
     private String fallbackLabel = "general.help";
     private double fallbackConfidence = 0.25;
+    private int maxLabels = 3;
+    private double secondaryMinConfidence = 0.35;
 
     public int getTopK() {
         return topK;
@@ -39,5 +41,21 @@ public class IntentClassifierProperties {
 
     public void setFallbackConfidence(double fallbackConfidence) {
         this.fallbackConfidence = fallbackConfidence;
+    }
+
+    public int getMaxLabels() {
+        return maxLabels;
+    }
+
+    public void setMaxLabels(int maxLabels) {
+        this.maxLabels = maxLabels;
+    }
+
+    public double getSecondaryMinConfidence() {
+        return secondaryMinConfidence;
+    }
+
+    public void setSecondaryMinConfidence(double secondaryMinConfidence) {
+        this.secondaryMinConfidence = secondaryMinConfidence;
     }
 }

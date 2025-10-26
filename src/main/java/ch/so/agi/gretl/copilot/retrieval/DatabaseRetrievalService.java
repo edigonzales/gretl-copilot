@@ -33,14 +33,14 @@ public class DatabaseRetrievalService implements RetrievalService {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseRetrievalService.class);
 
-    private static final int EMBEDDING_DIMENSIONS = 1536;
+    private static final int EMBEDDING_DIMENSIONS = 3072;
 
     private static final Pattern SCORE_PATTERN = Pattern.compile("(-?\\d+(?:\\.\\d+)?)");
 
     private static final String HYBRID_QUERY = """
             WITH params AS (
               SELECT
-                ?::vector(1536)      AS q_emb,
+                ?::vector(3072)      AS q_emb,
                 ?::text              AS q_text,
                 COALESCE(?::float8, 0.6)::float8 AS alpha,
                 ?::int               AS candidate_limit
@@ -133,16 +133,19 @@ public class DatabaseRetrievalService implements RetrievalService {
 
     @Override
     public RetrievalResult retrieve(String userMessage, IntentClassification classification) {
+        log.debug("Fetch documents from database");
         float[] queryVector = embedQuery(userMessage);
         List<DatabaseDocument> candidates = fetchCandidates(queryVector, userMessage, properties.getAlpha(),
                 properties.getCandidateLimit());
-
+        log.debug("Candidates total: {}", candidates.size());
+        
         if (candidates.isEmpty()) {
             log.warn("No retrieval candidates for query: {}", userMessage);
             return new RetrievalResult(List.of());
         }
 
         List<RerankedDocument> reranked = rerankCandidates(userMessage, candidates, properties.getRerankTopK());
+        log.debug("Reranked documents (total): {}", reranked.size());
 
         return new RetrievalResult(reranked.stream().limit(properties.getFinalLimit()).map(this::toRetrievedDocument).toList());
     }
@@ -175,6 +178,7 @@ public class DatabaseRetrievalService implements RetrievalService {
     private List<RerankedDocument> rerankCandidates(String userMessage, List<DatabaseDocument> candidates, int rerankTopK) {
         ChatModel reranker = rerankerProvider.getIfAvailable();
         List<DatabaseDocument> limited = candidates.stream().limit(rerankTopK).toList();
+        log.debug("limited total: {}", limited.size());
 
         if (reranker == null) {
             log.warn("No ChatModel available for reranking; using hybrid scores");
@@ -185,6 +189,8 @@ public class DatabaseRetrievalService implements RetrievalService {
         List<RerankedDocument> results = new ArrayList<>();
         for (DatabaseDocument candidate : limited) {
             double score = scoreWithCrossEncoder(reranker, userMessage, candidate);
+            log.debug("score: {}", score);
+            log.debug(candidate.taskName);
             results.add(new RerankedDocument(candidate, score));
         }
 

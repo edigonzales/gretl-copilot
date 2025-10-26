@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -20,7 +21,8 @@ import org.springframework.util.StringUtils;
 import com.pgvector.PGvector;
 
 @Component
-@ConditionalOnBean(EmbeddingModel.class)
+@ConditionalOnProperty(name = "spring.ai.openai.embedding.options.model", havingValue = "text-embedding-3-large", matchIfMissing = true)
+
 public class DatabaseIntentClassifier implements IntentClassifier {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseIntentClassifier.class);
@@ -55,7 +57,7 @@ public class DatabaseIntentClassifier implements IntentClassifier {
         }
         if (!StringUtils.hasText(userMessage)) {
             return new IntentClassification(properties.getFallbackLabel(), 0.0,
-                    "Leere Benutzereingabe – kein Intent bestimmbar.");
+                    "Leere Benutzereingabe – kein Intent bestimmbar.", List.of());
         }
 
         float[] embedding = embed(userMessage);
@@ -71,19 +73,25 @@ public class DatabaseIntentClassifier implements IntentClassifier {
         if (candidates.isEmpty()) {
             return fallback("Keine passenden Intent-Beispiele in der Datenbank gefunden.");
         }
+        
+        System.out.println(candidates);
 
         IntentCandidate best = candidates.get(0);
         double confidence = computeConfidence(candidates);
-        String rationale = buildRationale(best, candidates);
+        String rationale = buildRationale(candidates);
 
+        System.out.println("confidence: " + confidence);
+        
         if (confidence < properties.getMinConfidence()) {
             if (log.isDebugEnabled()) {
                 log.debug("Confidence {} below threshold {}; using fallback", confidence, properties.getMinConfidence());
             }
-            return new IntentClassification(properties.getFallbackLabel(), properties.getFallbackConfidence(), rationale);
+            return new IntentClassification(properties.getFallbackLabel(), properties.getFallbackConfidence(), rationale,
+                    List.of());
         }
 
-        IntentClassification classification = new IntentClassification(toLabel(best.taskName()), confidence, rationale);
+        IntentClassification classification = new IntentClassification(toLabel(best.taskName()), confidence, rationale,
+                buildSecondaryLabels(candidates));
         if (log.isDebugEnabled()) {
             log.debug("Returning classification {} with confidence {}", classification.label(), classification.confidence());
         }
@@ -94,7 +102,8 @@ public class DatabaseIntentClassifier implements IntentClassifier {
         if (log.isDebugEnabled()) {
             log.debug("fallback() returning fallback label due to: {}", reason);
         }
-        return new IntentClassification(properties.getFallbackLabel(), clamp(properties.getFallbackConfidence()), reason);
+        return new IntentClassification(properties.getFallbackLabel(), clamp(properties.getFallbackConfidence()), reason,
+                List.of());
     }
 
     private float[] embed(String text) {
@@ -111,6 +120,7 @@ public class DatabaseIntentClassifier implements IntentClassifier {
     }
 
     private List<IntentCandidate> fetchCandidates(float[] embedding, int limit) {
+        System.out.println("****************");
         if (limit <= 0) {
             return List.of();
         }
@@ -161,19 +171,20 @@ public class DatabaseIntentClassifier implements IntentClassifier {
         return clamp(confidence);
     }
 
-    private String buildRationale(IntentCandidate best, List<IntentCandidate> candidates) {
+    private String buildRationale(List<IntentCandidate> candidates) {
         List<String> parts = new ArrayList<>();
-        parts.add("Beste Übereinstimmung: " + best.title() + " (" + formatPercent(best.similarity()) + ")");
-
-        if (StringUtils.hasText(best.explanation())) {
-            parts.add(best.explanation().strip());
+        int limit = Math.max(1, properties.getMaxLabels());
+        for (int index = 0; index < candidates.size(); index++) {
+            if (index >= limit) {
+                break;
+            }
+            IntentCandidate candidate = candidates.get(index);
+            String prefix = index == 0 ? "Beste Übereinstimmung" : "Weiterer Treffer";
+            parts.add(prefix + ": " + candidate.title() + " (" + formatPercent(candidate.similarity()) + ")");
+            if (index == 0 && StringUtils.hasText(candidate.explanation())) {
+                parts.add(candidate.explanation().strip());
+            }
         }
-
-        if (candidates.size() > 1) {
-            IntentCandidate second = candidates.get(1);
-            parts.add("Zweitplatzierter Treffer: " + second.title() + " (" + formatPercent(second.similarity()) + ")");
-        }
-
         return String.join(". ", parts);
     }
 
@@ -186,6 +197,31 @@ public class DatabaseIntentClassifier implements IntentClassifier {
             return properties.getFallbackLabel();
         }
         return "task." + taskName.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private List<IntentLabel> buildSecondaryLabels(List<IntentCandidate> candidates) {
+        int limit = Math.max(1, properties.getMaxLabels());
+        if (candidates.size() <= 1 || limit <= 1) {
+            return List.of();
+        }
+
+        List<IntentLabel> labels = new ArrayList<>();
+        for (int index = 1; index < candidates.size(); index++) {
+            if (labels.size() >= limit - 1) {
+                break;
+            }
+            IntentCandidate candidate = candidates.get(index);
+            double similarity = clamp(candidate.similarity());
+            if (similarity < properties.getSecondaryMinConfidence()) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Skipping candidate {} with similarity {} below secondary threshold {}", index,
+                            similarity, properties.getSecondaryMinConfidence());
+                }
+                continue;
+            }
+            labels.add(new IntentLabel(toLabel(candidate.taskName()), similarity));
+        }
+        return labels;
     }
 
     private double clamp(double value) {

@@ -8,7 +8,8 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
 @Component
-@ConditionalOnMissingBean(ChatModel.class)
+//@ConditionalOnMissingBean(ChatModel.class)
+@ConditionalOnMissingBean(CopilotModelClient.class)
 public class MockCopilotModelClient implements CopilotModelClient {
 
     @Override
