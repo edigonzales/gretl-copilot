@@ -177,11 +177,15 @@ public class ingest_gretl {
 
     long pageId = upsertPage(cx, url, title, pageMd);
 
-    for (Element h : main.select("h2, h3")) {
+    for (Element h : main.select("h3")) {
       String heading = norm(h.text());
       String anchor = h.attr("data-anchor-id");
       String baseUrl = url.contains("#") ? url.substring(0, url.indexOf('#')) : url;
       String sectionUrl = (anchor != null && !anchor.isEmpty()) ? baseUrl + "#" + anchor : url;
+
+
+      System.out.println(heading);
+
 
       if ("h2".equals(h.tagName()) && (anchor == null || anchor.isEmpty()) && h.parent() == main) {
         continue;
@@ -203,6 +207,7 @@ public class ingest_gretl {
       String sectionText = Jsoup.parse(sectionHtml).text();
 
       String taskName = guessTask(heading);
+
       insertChunk(cx, pageId, taskName, "task", sectionUrl, anchor, heading, sectionText, sectionHtml);
       if (!dbEnabled) {
         System.out.printf(Locale.ROOT, "→ Section [%s] %s%n", heading, sectionUrl);
@@ -256,10 +261,29 @@ public class ingest_gretl {
         }
       }
 
+      String exampleExplanation = null;
+      for (Element child : frag.children()) {
+        if ("p".equals(child.tagName())) {
+          String text = norm(child.text());
+          if (!isBlank(text)) {
+            exampleExplanation = text;
+            break;
+          }
+        }
+      }
+      if (isBlank(exampleExplanation)) {
+        Element firstParagraph = frag.selectFirst("p");
+        if (firstParagraph != null) {
+          String text = norm(firstParagraph.text());
+          if (!isBlank(text)) {
+            exampleExplanation = text;
+          }
+        }
+      }
       for (Element code : frag.select("pre > code")) {
         String lang = code.className();
         String codeMd = "```" + lang.replace("language-", "") + "\n" + code.text() + "\n```";
-        insertExample(cx, (taskName != null ? taskName : heading), heading + " example", codeMd, null);
+        insertExample(cx, (taskName != null ? taskName : heading), heading + " example", codeMd, exampleExplanation);
       }
     }
 

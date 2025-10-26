@@ -58,7 +58,10 @@ public class ChatService {
         String userMessage = messageIndex > 0 ? messages.get(messageIndex - 1).getContent() : "";
 
         IntentClassification classification = intentClassifier.classify(userMessage);
+        System.out.println(classification.allLabels());
+        System.out.println("******* 1");
         RetrievalResult retrievalResult = retrievalService.retrieve(userMessage, classification);
+        System.out.println("******* 2");
         CopilotPrompt prompt = new CopilotPrompt(userMessage, classification, retrievalResult.documents());
 
         return modelClient.streamResponse(prompt)

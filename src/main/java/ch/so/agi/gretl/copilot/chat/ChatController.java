@@ -40,7 +40,7 @@ public class ChatController {
     public String postMessage(@RequestParam(name = "sessionId") String sessionId,
             @RequestParam(name = "message") String userMessage, Model model) {
         UUID messageId = chatService.handleUserMessage(sessionId, userMessage);
-        model.addAttribute("userMessage", userMessage);
+        model.addAttribute("userMessage", userMessage.trim());
         model.addAttribute("sessionId", sessionId);
         model.addAttribute("messageId", messageId.toString());
         return "chat/message";

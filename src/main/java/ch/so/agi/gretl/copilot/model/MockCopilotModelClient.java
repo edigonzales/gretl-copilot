@@ -1,44 +1,55 @@
 package ch.so.agi.gretl.copilot.model;
 
 import java.time.Duration;
-import java.util.List;
-
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Component;
 
 import reactor.core.publisher.Flux;
 
 @Component
+//@ConditionalOnMissingBean(ChatModel.class)
+@ConditionalOnMissingBean(CopilotModelClient.class)
 public class MockCopilotModelClient implements CopilotModelClient {
 
     @Override
     public Flux<CopilotStreamSegment> streamResponse(CopilotPrompt prompt) {
-        String explanation = "Here is the GRETL task you can use to import an INTERLIS transfer "
-                + "file into PostGIS. I also included the Gradle snippet so you can paste it into "
-                + "your pipeline.";
+        String explanation = """
+                ## Beschreibung
+                Beispielantwort aus dem Mock-Modell: Importiert ein INTERLIS-Transferfile nach PostGIS inklusive kurzer Erläuterung.
 
-        String buildGradle = "task importInterlis(type: ch.so.agi.gretl.tasks.InterlisImport) {\n"
-                + "    dataset = 'https://example.com/fubar.xtf'\n"
-                + "    targetSchema = 'interlis_import'\n"
-                + "    modeldir = 'https://models.interlis.ch/'\n"
-                + "    defaultSrsCode = '2056'\n"
-                + "    createSqlLog = true\n"
-                + "}";
+                ## Pflicht-Properties
+                | Property | Typ | Pflicht | Standardwert | Beschreibung |
+                | dataset | Path | Ja | – | Pfad zum INTERLIS-Transferfile. |
+                | dbUrl | String | Ja | – | JDBC-Verbindungszeichenfolge der Ziel-Datenbank. |
 
-        String links = "Top hits: tasks/interlis/importPostgis, examples/interlis/postgis-import, task properties.";
+                ## Optionale Properties
+                | Property | Typ | Pflicht | Standardwert | Beschreibung |
+                | schema | String | Nein | public | Ziel-Schema für den Import. |
+                | createSqlLog | Boolean | Nein | false | Schreibt die generierten SQL-Befehle in eine Logdatei. |
 
-        Flux<CopilotStreamSegment> textStream = Flux.fromIterable(tokenize(explanation))
-                .delayElements(Duration.ofMillis(120))
-                .map(token -> new CopilotStreamSegment(CopilotStreamSegment.SegmentType.TEXT, token));
+                ## Beispiel-Task
+                Siehe Codeblock unten.
+                """;
+
+        String buildGradle = """
+                task importInterlis(type: ch.so.agi.gretl.tasks.Ili2pgImport) {
+                    dataset = file("data/example.xtf")
+                    dbUrl = "jdbc:postgresql://localhost:5432/gretl"
+                    schema = "interlis_import"
+                    createSqlLog = true
+                }
+                """;
+
+        CopilotStreamSegment textSegment = new CopilotStreamSegment(CopilotStreamSegment.SegmentType.TEXT,
+                explanation.strip());
 
         CopilotStreamSegment codeSegment = new CopilotStreamSegment(CopilotStreamSegment.SegmentType.CODE_BLOCK,
-                buildGradle);
+                buildGradle.strip());
 
-        CopilotStreamSegment linksSegment = new CopilotStreamSegment(CopilotStreamSegment.SegmentType.LINKS, links);
+        CopilotStreamSegment linksSegment = new CopilotStreamSegment(CopilotStreamSegment.SegmentType.LINKS, "");
 
-        return Flux.concat(textStream, Flux.just(codeSegment), Flux.just(linksSegment));
-    }
-
-    private List<String> tokenize(String explanation) {
-        return List.of(explanation.split(" "));
+        return Flux.concat(Flux.just(textSegment).delayElements(Duration.ofMillis(120)), Flux.just(codeSegment),
+                Flux.just(linksSegment));
     }
 }
