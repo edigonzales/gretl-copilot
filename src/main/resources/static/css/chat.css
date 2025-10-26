@@ -250,8 +250,88 @@ body {
 
 .assistant-body {
     display: block;
-    white-space: pre-wrap;
     word-break: break-word;
+}
+
+.assistant-markdown {
+    display: block;
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--text-primary);
+}
+
+.assistant-markdown > *:first-child {
+    margin-top: 0;
+}
+
+.assistant-markdown > * + * {
+    margin-top: 1rem;
+}
+
+.assistant-markdown h2 {
+    font-size: 1.15rem;
+    margin: 1.5rem 0 0.75rem;
+    font-weight: 600;
+}
+
+.assistant-markdown p {
+    margin: 0;
+}
+
+.assistant-markdown ul,
+.assistant-markdown ol {
+    margin: 0.75rem 0;
+    padding-left: 1.5rem;
+}
+
+.assistant-markdown li + li {
+    margin-top: 0.35rem;
+}
+
+.assistant-markdown table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.25rem 0;
+    font-size: 0.95rem;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.assistant-markdown th,
+.assistant-markdown td {
+    border: 1px solid #d0d5dd;
+    padding: 10px 14px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.assistant-markdown thead th {
+    background: var(--bg-user);
+    font-weight: 600;
+}
+
+.assistant-markdown code {
+    background: rgba(16, 24, 40, 0.08);
+    border-radius: 6px;
+    padding: 0 6px;
+    font-family: var(--code-font);
+    font-size: 0.95rem;
+}
+
+.assistant-markdown pre code {
+    background: none;
+    padding: 0;
+}
+
+.assistant-markdown a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.assistant-markdown a:hover,
+.assistant-markdown a:focus {
+    text-decoration: underline;
 }
 
 .code-card {
