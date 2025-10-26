@@ -12,6 +12,7 @@ public class ChatSession {
     private final String id;
     private final List<ChatMessage> messages = new ArrayList<>();
     private final Map<UUID, String> buildGradleArtifacts = new HashMap<>();
+    private final Map<UUID, AssistantMessageView> assistantViews = new HashMap<>();
 
     public ChatSession(String id) {
         this.id = id;
@@ -39,5 +40,13 @@ public class ChatSession {
 
     public Optional<String> findBuildGradle(UUID messageId) {
         return Optional.ofNullable(buildGradleArtifacts.get(messageId));
+    }
+
+    public synchronized void resetAssistantView(UUID messageId) {
+        assistantViews.put(messageId, new AssistantMessageView());
+    }
+
+    public synchronized AssistantMessageView getAssistantView(UUID messageId) {
+        return assistantViews.computeIfAbsent(messageId, id -> new AssistantMessageView());
     }
 }

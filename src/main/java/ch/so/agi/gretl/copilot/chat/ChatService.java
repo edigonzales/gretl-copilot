@@ -8,6 +8,11 @@ import java.util.UUID;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 
+import com.vladsch.flexmark.ext.tables.TablesExtension;
+import com.vladsch.flexmark.html.HtmlRenderer;
+import com.vladsch.flexmark.parser.Parser;
+import com.vladsch.flexmark.util.data.MutableDataSet;
+
 import ch.so.agi.gretl.copilot.intent.IntentClassification;
 import ch.so.agi.gretl.copilot.intent.IntentClassifier;
 import ch.so.agi.gretl.copilot.model.CopilotModelClient;
@@ -20,6 +25,7 @@ import ch.so.agi.gretl.copilot.session.ChatMessage;
 import ch.so.agi.gretl.copilot.session.ChatRole;
 import ch.so.agi.gretl.copilot.session.ChatSession;
 import ch.so.agi.gretl.copilot.session.ChatSessionRegistry;
+import ch.so.agi.gretl.copilot.session.AssistantMessageView;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -29,6 +35,8 @@ public class ChatService {
     private final IntentClassifier intentClassifier;
     private final RetrievalService retrievalService;
     private final CopilotModelClient modelClient;
+    private final Parser markdownParser;
+    private final HtmlRenderer markdownRenderer;
 
     public ChatService(ChatSessionRegistry sessionRegistry, IntentClassifier intentClassifier,
             RetrievalService retrievalService, CopilotModelClient modelClient) {
@@ -36,6 +44,12 @@ public class ChatService {
         this.intentClassifier = intentClassifier;
         this.retrievalService = retrievalService;
         this.modelClient = modelClient;
+
+        MutableDataSet markdownOptions = new MutableDataSet();
+        markdownOptions.set(Parser.EXTENSIONS, List.of(TablesExtension.create()));
+        markdownOptions.set(HtmlRenderer.ESCAPE_HTML, true);
+        this.markdownParser = Parser.builder(markdownOptions).build();
+        this.markdownRenderer = HtmlRenderer.builder(markdownOptions).escapeHtml(true).build();
     }
 
     public UUID handleUserMessage(String sessionId, String userMessage) {
@@ -45,6 +59,7 @@ public class ChatService {
 
         ChatMessage assistantPlaceholder = new ChatMessage(ChatRole.ASSISTANT, "");
         session.addMessage(assistantPlaceholder);
+        session.resetAssistantView(assistantPlaceholder.getId());
         return assistantPlaceholder.getId();
     }
 
@@ -74,21 +89,26 @@ public class ChatService {
         return switch (segment.type()) {
         case TEXT -> {
             String token = segment.content();
-            assistantMessage.appendContent(token + " ");
-            yield Flux.just(toMessageEvent(
-                    "<span class=\"assistant-token\">" + escapeHtml(token) + " </span>"));
+            assistantMessage.appendContent(token);
+            AssistantMessageView view = session.getAssistantView(messageId);
+            view.appendMarkdown(token);
+            yield Flux.just(toMessageEvent(renderAssistantMessageHtml(messageId, view)));
         }
         case CODE_BLOCK -> {
             session.registerBuildGradle(messageId, segment.content());
             assistantMessage.appendContent("\n\n```gradle\n" + segment.content() + "\n```");
             String codeId = "code-" + messageId;
             String codeHtml = buildCodeBlockHtml(sessionId, messageId, codeId, segment.content());
-            yield Flux.just(toMessageEvent(codeHtml));
+            AssistantMessageView view = session.getAssistantView(messageId);
+            view.setCodeBlockHtml(codeHtml);
+            yield Flux.just(toMessageEvent(renderAssistantMessageHtml(messageId, view)));
         }
         case LINKS -> {
             String linksHtml = buildLinksHtml(retrievalResult.documents());
             assistantMessage.appendContent("\n\n" + stripHtmlTags(linksHtml));
-            yield Flux.just(toMessageEvent(linksHtml));
+            AssistantMessageView view = session.getAssistantView(messageId);
+            view.setLinksHtml(linksHtml);
+            yield Flux.just(toMessageEvent(renderAssistantMessageHtml(messageId, view)));
         }
         };
     }
@@ -99,6 +119,24 @@ public class ChatService {
 
     private ServerSentEvent<String> toCompleteEvent() {
         return ServerSentEvent.<String>builder().event("complete").data("").build();
+    }
+
+    private String renderAssistantMessageHtml(UUID messageId, AssistantMessageView view) {
+        StringBuilder bodyBuilder = new StringBuilder();
+        bodyBuilder.append("<div class=\"assistant-markdown\">");
+        bodyBuilder.append(renderMarkdown(view.getMarkdown()));
+        bodyBuilder.append("</div>");
+        view.getCodeBlockHtml().ifPresent(bodyBuilder::append);
+        view.getLinksHtml().ifPresent(bodyBuilder::append);
+        return "<template hx-swap-oob=\"innerHTML:#assistant-body-" + messageId + "\">" + bodyBuilder.toString()
+                + "</template>";
+    }
+
+    private String renderMarkdown(String markdown) {
+        if (markdown == null || markdown.isBlank()) {
+            return "";
+        }
+        return markdownRenderer.render(markdownParser.parse(markdown.stripTrailing()));
     }
 
     private String buildCodeBlockHtml(String sessionId, UUID messageId, String codeId, String content) {
