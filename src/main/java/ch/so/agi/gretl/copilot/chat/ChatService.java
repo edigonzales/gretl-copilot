@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import ch.so.agi.gretl.copilot.intent.IntentClassification;
 import ch.so.agi.gretl.copilot.intent.IntentClassifier;
@@ -29,13 +30,15 @@ public class ChatService {
     private final IntentClassifier intentClassifier;
     private final RetrievalService retrievalService;
     private final CopilotModelClient modelClient;
+    private final MarkdownRenderer markdownRenderer;
 
     public ChatService(ChatSessionRegistry sessionRegistry, IntentClassifier intentClassifier,
-            RetrievalService retrievalService, CopilotModelClient modelClient) {
+            RetrievalService retrievalService, CopilotModelClient modelClient, MarkdownRenderer markdownRenderer) {
         this.sessionRegistry = sessionRegistry;
         this.intentClassifier = intentClassifier;
         this.retrievalService = retrievalService;
         this.modelClient = modelClient;
+        this.markdownRenderer = markdownRenderer;
     }
 
     public UUID handleUserMessage(String sessionId, String userMessage) {
@@ -73,10 +76,9 @@ public class ChatService {
             ChatMessage assistantMessage, RetrievalResult retrievalResult, CopilotStreamSegment segment) {
         return switch (segment.type()) {
         case TEXT -> {
-            String token = segment.content();
-            assistantMessage.appendContent(token + " ");
-            yield Flux.just(toMessageEvent(
-                    "<span class=\"assistant-token\">" + escapeHtml(token) + " </span>"));
+            assistantMessage.appendContent(segment.content());
+            String html = markdownRenderer.render(assistantMessage.getContent());
+            yield StringUtils.hasText(html) ? Flux.just(toMessageEvent(html)) : Flux.empty();
         }
         case CODE_BLOCK -> {
             session.registerBuildGradle(messageId, segment.content());
