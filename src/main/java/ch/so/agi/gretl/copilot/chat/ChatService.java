@@ -29,13 +29,15 @@ public class ChatService {
     private final IntentClassifier intentClassifier;
     private final RetrievalService retrievalService;
     private final CopilotModelClient modelClient;
+    private final MarkdownRenderer markdownRenderer;
 
     public ChatService(ChatSessionRegistry sessionRegistry, IntentClassifier intentClassifier,
-            RetrievalService retrievalService, CopilotModelClient modelClient) {
+            RetrievalService retrievalService, CopilotModelClient modelClient, MarkdownRenderer markdownRenderer) {
         this.sessionRegistry = sessionRegistry;
         this.intentClassifier = intentClassifier;
         this.retrievalService = retrievalService;
         this.modelClient = modelClient;
+        this.markdownRenderer = markdownRenderer;
     }
 
     public UUID handleUserMessage(String sessionId, String userMessage) {
@@ -74,9 +76,11 @@ public class ChatService {
         return switch (segment.type()) {
         case TEXT -> {
             String token = segment.content();
-            assistantMessage.appendContent(token + " ");
-            yield Flux.just(toMessageEvent(
-                    "<span class=\"assistant-token\">" + escapeHtml(token) + " </span>"));
+            assistantMessage.appendContent(token);
+            String markdownContent = stripBuildGradleCodeBlocks(assistantMessage.getContent());
+            String renderedHtml = markdownRenderer.render(markdownContent);
+            String markdownUpdate = buildMarkdownUpdate(messageId, renderedHtml);
+            yield Flux.just(toMessageEvent(markdownUpdate));
         }
         case CODE_BLOCK -> {
             session.registerBuildGradle(messageId, segment.content());
@@ -114,6 +118,15 @@ public class ChatService {
                 + "<path d=\"M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z\"/>"
                 + "</svg><span class=\"sr-only\">Download build.gradle</span></a>" + "</div>" + "</div>"
                 + "<pre id=\"" + codeId + "\"><code>" + escapeHtml(content) + "</code></pre>" + "</div>";
+    }
+
+    private String buildMarkdownUpdate(UUID messageId, String renderedHtml) {
+        return "<template hx-swap-oob=\"innerHTML:#assistant-markdown-" + messageId + "\">"
+                + "<div class=\"assistant-markdown\">" + renderedHtml + "</div>" + "</template>";
+    }
+
+    private String stripBuildGradleCodeBlocks(String content) {
+        return content.replaceAll("(?s)```gradle\\n.*?\\n```", "");
     }
 
     private String buildLinksHtml(List<RetrievedDocument> documents) {

@@ -26,7 +26,9 @@
                 <div class="typing-indicator typing-indicator--inline">
                     <span></span><span></span><span></span>
                 </div>
-                <div class="assistant-body" id="assistant-body-${messageId}" sse-swap="message" hx-swap="beforeend"></div>
+                <div class="assistant-body" id="assistant-body-${messageId}" sse-swap="message" hx-swap="beforeend">
+                    <div class="assistant-body__markdown" id="assistant-markdown-${messageId}"></div>
+                </div>
             </div>
         </div>
     </div>
