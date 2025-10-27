@@ -250,8 +250,69 @@ body {
 
 .assistant-body {
     display: block;
-    white-space: pre-wrap;
     word-break: break-word;
+}
+
+.assistant-body__markdown {
+    display: block;
+}
+
+.assistant-body__markdown .markdown-body {
+    display: block;
+    color: var(--text-primary);
+}
+
+.assistant-body__markdown h1,
+.assistant-body__markdown h2,
+.assistant-body__markdown h3,
+.assistant-body__markdown h4,
+.assistant-body__markdown h5,
+.assistant-body__markdown h6 {
+    margin-top: 1.2em;
+    margin-bottom: 0.6em;
+}
+
+.assistant-body__markdown p {
+    margin-top: 0.6em;
+    margin-bottom: 0.6em;
+}
+
+.assistant-body__markdown ul,
+.assistant-body__markdown ol {
+    margin: 0.6em 0 0.6em 1.2em;
+}
+
+.assistant-body__markdown code {
+    font-family: var(--code-font);
+    background: rgba(15, 23, 42, 0.06);
+    padding: 0.1em 0.35em;
+    border-radius: 6px;
+}
+
+.assistant-body__markdown pre code {
+    display: block;
+    padding: 1em;
+    background: rgba(15, 23, 42, 0.06);
+}
+
+.assistant-body__markdown table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1em 0;
+    font-size: 0.95rem;
+}
+
+.assistant-body__markdown th,
+.assistant-body__markdown td {
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+}
+
+.assistant-body__markdown thead th {
+    background: rgba(15, 23, 42, 0.04);
+    font-weight: 600;
 }
 
 .code-card {

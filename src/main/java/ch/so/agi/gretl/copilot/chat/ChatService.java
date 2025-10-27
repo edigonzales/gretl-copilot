@@ -29,13 +29,15 @@ public class ChatService {
     private final IntentClassifier intentClassifier;
     private final RetrievalService retrievalService;
     private final CopilotModelClient modelClient;
+    private final MarkdownRenderer markdownRenderer;
 
     public ChatService(ChatSessionRegistry sessionRegistry, IntentClassifier intentClassifier,
-            RetrievalService retrievalService, CopilotModelClient modelClient) {
+            RetrievalService retrievalService, CopilotModelClient modelClient, MarkdownRenderer markdownRenderer) {
         this.sessionRegistry = sessionRegistry;
         this.intentClassifier = intentClassifier;
         this.retrievalService = retrievalService;
         this.modelClient = modelClient;
+        this.markdownRenderer = markdownRenderer;
     }
 
     public UUID handleUserMessage(String sessionId, String userMessage) {
@@ -73,24 +75,46 @@ public class ChatService {
             ChatMessage assistantMessage, RetrievalResult retrievalResult, CopilotStreamSegment segment) {
         return switch (segment.type()) {
         case TEXT -> {
-            String token = segment.content();
-            assistantMessage.appendContent(token + " ");
-            yield Flux.just(toMessageEvent(
-                    "<span class=\"assistant-token\">" + escapeHtml(token) + " </span>"));
+            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
+            assistantMessage.appendContent(segment.content());
+            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
+            if (markdownHtml.isEmpty()) {
+                yield Flux.empty();
+            }
+            yield Flux.just(toMessageEvent(markdownHtml));
         }
         case CODE_BLOCK -> {
+            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
             session.registerBuildGradle(messageId, segment.content());
             assistantMessage.appendContent("\n\n```gradle\n" + segment.content() + "\n```");
             String codeId = "code-" + messageId;
             String codeHtml = buildCodeBlockHtml(sessionId, messageId, codeId, segment.content());
-            yield Flux.just(toMessageEvent(codeHtml));
+            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
+            if (markdownHtml.isEmpty()) {
+                yield Flux.just(toMessageEvent(codeHtml));
+            }
+            yield Flux.just(toMessageEvent(codeHtml), toMessageEvent(markdownHtml));
         }
         case LINKS -> {
             String linksHtml = buildLinksHtml(retrievalResult.documents());
+            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
             assistantMessage.appendContent("\n\n" + stripHtmlTags(linksHtml));
-            yield Flux.just(toMessageEvent(linksHtml));
+            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
+            if (markdownHtml.isEmpty()) {
+                yield Flux.just(toMessageEvent(linksHtml));
+            }
+            yield Flux.just(toMessageEvent(linksHtml), toMessageEvent(markdownHtml));
         }
         };
+    }
+
+    private String renderMarkdownHtml(UUID messageId, ChatMessage assistantMessage, boolean createElement) {
+        String rendered = markdownRenderer.render(assistantMessage.getContent());
+        if (rendered.isBlank()) {
+            return "";
+        }
+
+        return buildMarkdownHtml(messageId, rendered, createElement);
     }
 
     private ServerSentEvent<String> toMessageEvent(String html) {
@@ -132,6 +156,20 @@ public class ChatService {
             builder.append("</li>");
         });
         builder.append("</ul>");
+        builder.append("</div>");
+        return builder.toString();
+    }
+
+    private String buildMarkdownHtml(UUID messageId, String renderedMarkdown, boolean createElement) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("<div id=\"assistant-markdown-").append(messageId).append("\" class=\"assistant-body__markdown\"");
+        if (!createElement) {
+            builder.append(" hx-swap-oob=\"innerHTML\"");
+        }
+        builder.append(">");
+        builder.append("<div class=\"markdown-body\">");
+        builder.append(renderedMarkdown);
+        builder.append("</div>");
         builder.append("</div>");
         return builder.toString();
     }
