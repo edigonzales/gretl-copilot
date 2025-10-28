@@ -10,7 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.RowMapper;
@@ -21,8 +20,7 @@ import org.springframework.util.StringUtils;
 import com.pgvector.PGvector;
 
 @Component
-@ConditionalOnProperty(name = "spring.ai.openai.embedding.options.model", havingValue = "text-embedding-3-large", matchIfMissing = true)
-
+@ConditionalOnProperty(name = "spring.ai.openai.embedding.options.model", havingValue = "text-embedding-3-large", matchIfMissing = false)
 public class DatabaseIntentClassifier implements IntentClassifier {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseIntentClassifier.class);

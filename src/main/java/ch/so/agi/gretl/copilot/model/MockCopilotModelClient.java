@@ -8,7 +8,6 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
 @Component
-//@ConditionalOnMissingBean(ChatModel.class)
 @ConditionalOnMissingBean(CopilotModelClient.class)
 public class MockCopilotModelClient implements CopilotModelClient {
 
@@ -20,11 +19,13 @@ public class MockCopilotModelClient implements CopilotModelClient {
 
                 ## Pflicht-Properties
                 | Property | Typ | Pflicht | Standardwert | Beschreibung |
+                | --- | --- | --- | --- | --- |
                 | dataset | Path | Ja | – | Pfad zum INTERLIS-Transferfile. |
                 | dbUrl | String | Ja | – | JDBC-Verbindungszeichenfolge der Ziel-Datenbank. |
 
                 ## Optionale Properties
                 | Property | Typ | Pflicht | Standardwert | Beschreibung |
+                | --- | --- | --- | --- | --- |
                 | schema | String | Nein | public | Ziel-Schema für den Import. |
                 | createSqlLog | Boolean | Nein | false | Schreibt die generierten SQL-Befehle in eine Logdatei. |
 

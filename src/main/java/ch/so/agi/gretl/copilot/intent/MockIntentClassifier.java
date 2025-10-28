@@ -5,8 +5,6 @@ import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Component;
 
-@Component
-@ConditionalOnMissingBean(DatabaseIntentClassifier.class)
 public class MockIntentClassifier implements IntentClassifier {
         
     @Override

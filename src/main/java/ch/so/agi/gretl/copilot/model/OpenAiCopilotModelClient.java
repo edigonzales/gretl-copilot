@@ -16,7 +16,7 @@ import ch.so.agi.gretl.copilot.prompt.CopilotPromptBuilder;
 import reactor.core.publisher.Flux;
 
 @Component
-@ConditionalOnProperty(name = "gretl.copilot.model.provider", havingValue = "openai", matchIfMissing = true)
+@ConditionalOnProperty(name = "gretl.copilot.model.provider", havingValue = "openai", matchIfMissing = false)
 public class OpenAiCopilotModelClient implements CopilotModelClient {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiCopilotModelClient.class);
