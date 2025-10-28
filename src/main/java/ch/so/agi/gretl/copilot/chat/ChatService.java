@@ -1,11 +1,12 @@
 package ch.so.agi.gretl.copilot.chat;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 
 import ch.so.agi.gretl.copilot.intent.IntentClassification;
@@ -20,9 +21,6 @@ import ch.so.agi.gretl.copilot.session.ChatMessage;
 import ch.so.agi.gretl.copilot.session.ChatRole;
 import ch.so.agi.gretl.copilot.session.ChatSession;
 import ch.so.agi.gretl.copilot.session.ChatSessionRegistry;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
 @Service
 public class ChatService {
     private final ChatSessionRegistry sessionRegistry;
@@ -40,108 +38,102 @@ public class ChatService {
         this.markdownRenderer = markdownRenderer;
     }
 
-    public UUID handleUserMessage(String sessionId, String userMessage) {
+    public AssistantReply handleUserMessage(String sessionId, String userMessage) {
         ChatSession session = sessionRegistry.getOrCreate(sessionId);
         ChatMessage message = new ChatMessage(ChatRole.USER, userMessage);
         session.addMessage(message);
 
         ChatMessage assistantPlaceholder = new ChatMessage(ChatRole.ASSISTANT, "");
         session.addMessage(assistantPlaceholder);
-        return assistantPlaceholder.getId();
-    }
-
-    public Flux<ServerSentEvent<String>> streamAssistantResponse(String sessionId, UUID messageId) {
-        ChatSession session = sessionRegistry.getOrCreate(sessionId);
-        ChatMessage assistantMessage = session.findMessage(messageId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown assistant message"));
-
-        List<ChatMessage> messages = session.getMessages();
-        int messageIndex = messages.indexOf(assistantMessage);
-        String userMessage = messageIndex > 0 ? messages.get(messageIndex - 1).getContent() : "";
+        UUID messageId = assistantPlaceholder.getId();
 
         IntentClassification classification = intentClassifier.classify(userMessage);
-        System.out.println(classification.allLabels());
-        System.out.println("******* 1");
         RetrievalResult retrievalResult = retrievalService.retrieve(userMessage, classification);
-        System.out.println("******* 2");
-        CopilotPrompt prompt = new CopilotPrompt(userMessage, classification, retrievalResult.documents());
+        List<RetrievedDocument> documents = (retrievalResult != null && retrievalResult.documents() != null)
+                ? retrievalResult.documents()
+                : List.of();
+        CopilotPrompt prompt = new CopilotPrompt(userMessage, classification, documents);
 
-        return modelClient.streamResponse(prompt)
-                .concatMap(segment -> mapSegment(sessionId, messageId, session, assistantMessage, retrievalResult, segment))
-                .concatWith(Mono.just(toCompleteEvent()));
+        List<CopilotStreamSegment> segments = modelClient.generateResponse(prompt);
+        return buildAssistantReply(session, sessionId, assistantPlaceholder, retrievalResult, segments);
     }
 
-    private Flux<ServerSentEvent<String>> mapSegment(String sessionId, UUID messageId, ChatSession session,
-            ChatMessage assistantMessage, RetrievalResult retrievalResult, CopilotStreamSegment segment) {
-        return switch (segment.type()) {
-//        case TEXT -> {
-//            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
-//            assistantMessage.appendContent(segment.content());
-//            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
-//            if (markdownHtml.isEmpty()) {
-//                yield Flux.empty();
-//            }
-//            yield Flux.just(toMessageEvent(markdownHtml));
-//        }
-//        case CODE_BLOCK -> {
-//            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
-//            session.registerBuildGradle(messageId, segment.content());
-//            assistantMessage.appendContent("\n\n```gradle\n" + segment.content() + "\n```");
-//            String codeId = "code-" + messageId;
-//            String codeHtml = buildCodeBlockHtml(sessionId, messageId, codeId, segment.content());
-//            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
-//            if (markdownHtml.isEmpty()) {
-//                yield Flux.just(toMessageEvent(codeHtml));
-//            }
-//            yield Flux.just(toMessageEvent(codeHtml), toMessageEvent(markdownHtml));
-//        }
-//        case LINKS -> {
-//            String linksHtml = buildLinksHtml(retrievalResult.documents());
-//            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
-//            assistantMessage.appendContent("\n\n" + stripHtmlTags(linksHtml));
-//            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
-//            if (markdownHtml.isEmpty()) {
-//                yield Flux.just(toMessageEvent(linksHtml));
-//            }
-//            yield Flux.just(toMessageEvent(linksHtml), toMessageEvent(markdownHtml));
-//        }
-        case TEXT -> {
-            String token = segment.content();
-            System.out.println("token: " + token);
-            assistantMessage.appendContent(token + " ");
-            yield Flux.just(toMessageEvent(
-                    "<span class=\"assistant-token\">" + escapeHtml(token) + " </span>"));
+    private AssistantReply buildAssistantReply(ChatSession session, String sessionId, ChatMessage assistantMessage,
+            RetrievalResult retrievalResult, List<CopilotStreamSegment> segments) {
+        UUID messageId = assistantMessage.getId();
+        List<String> htmlFragments = new ArrayList<>();
+        StringBuilder textAccumulator = new StringBuilder();
+        StringBuilder sessionContent = new StringBuilder();
+
+        for (CopilotStreamSegment segment : segments) {
+            if (segment == null || segment.type() == null) {
+                continue;
+            }
+
+            String rawContent = Optional.ofNullable(segment.content()).map(String::strip).orElse("");
+
+            switch (segment.type()) {
+            case TEXT -> {
+                if (rawContent.isEmpty()) {
+                    break;
+                }
+                if (sessionContent.length() > 0) {
+                    sessionContent.append("\n\n");
+                }
+                sessionContent.append(rawContent);
+                if (textAccumulator.length() > 0) {
+                    textAccumulator.append("\n\n");
+                }
+                textAccumulator.append(rawContent);
+            }
+            case CODE_BLOCK -> {
+                flushText(messageId, textAccumulator, htmlFragments);
+                if (rawContent.isEmpty()) {
+                    break;
+                }
+                session.registerBuildGradle(messageId, rawContent);
+                if (sessionContent.length() > 0) {
+                    sessionContent.append("\n\n");
+                }
+                sessionContent.append("```gradle\n").append(rawContent).append("\n```");
+                String codeId = "code-" + messageId;
+                htmlFragments.add(buildCodeBlockHtml(sessionId, messageId, codeId, rawContent));
+            }
+            case LINKS -> {
+                flushText(messageId, textAccumulator, htmlFragments);
+                List<RetrievedDocument> documents = (retrievalResult == null || retrievalResult.documents() == null)
+                        ? List.of()
+                        : retrievalResult.documents();
+                if (documents.isEmpty()) {
+                    break;
+                }
+                String linksHtml = buildLinksHtml(documents);
+                htmlFragments.add(linksHtml);
+                if (sessionContent.length() > 0) {
+                    sessionContent.append("\n\n");
+                }
+                sessionContent.append(stripHtmlTags(linksHtml));
+            }
+            }
         }
-        case CODE_BLOCK -> {
-            session.registerBuildGradle(messageId, segment.content());
-            assistantMessage.appendContent("\n\n```gradle\n" + segment.content() + "\n```");
-            String codeId = "code-" + messageId;
-            String codeHtml = buildCodeBlockHtml(sessionId, messageId, codeId, segment.content());
-            yield Flux.just(toMessageEvent(codeHtml));
-        }
-        case LINKS -> {
-            String linksHtml = buildLinksHtml(retrievalResult.documents());
-            assistantMessage.appendContent("\n\n" + stripHtmlTags(linksHtml));
-            yield Flux.just(toMessageEvent(linksHtml));
-        }
-        };
+
+        flushText(messageId, textAccumulator, htmlFragments);
+
+        assistantMessage.replaceContent(sessionContent.toString().trim());
+
+        String combinedHtml = String.join("", htmlFragments);
+        return new AssistantReply(messageId, new HtmlFragment(combinedHtml));
     }
 
-    private String renderMarkdownHtml(UUID messageId, ChatMessage assistantMessage, boolean createElement) {
-        String rendered = markdownRenderer.render(assistantMessage.getContent());
-        if (rendered.isBlank()) {
-            return "";
+    private void flushText(UUID messageId, StringBuilder textAccumulator, List<String> htmlFragments) {
+        if (textAccumulator.isEmpty()) {
+            return;
         }
-
-        return buildMarkdownHtml(messageId, rendered, createElement);
-    }
-
-    private ServerSentEvent<String> toMessageEvent(String html) {
-        return ServerSentEvent.<String>builder().event("message").data(html).build();
-    }
-
-    private ServerSentEvent<String> toCompleteEvent() {
-        return ServerSentEvent.<String>builder().event("complete").data("").build();
+        String markdownHtml = renderMarkdownHtml(messageId, textAccumulator.toString());
+        if (!markdownHtml.isEmpty()) {
+            htmlFragments.add(markdownHtml);
+        }
+        textAccumulator.setLength(0);
     }
 
     private String buildCodeBlockHtml(String sessionId, UUID messageId, String codeId, String content) {
@@ -179,18 +171,30 @@ public class ChatService {
         return builder.toString();
     }
 
-    private String buildMarkdownHtml(UUID messageId, String renderedMarkdown, boolean createElement) {
+    private String buildMarkdownHtml(UUID messageId, String renderedMarkdown) {
         StringBuilder builder = new StringBuilder();
-        builder.append("<div id=\"assistant-markdown-").append(messageId).append("\" class=\"assistant-body__markdown\"");
-        if (!createElement) {
-            builder.append(" hx-swap-oob=\"innerHTML\"");
-        }
-        builder.append(">");
+        builder.append("<div class=\"assistant-body__markdown\" data-message-id=\"").append(messageId)
+                .append("\">");
         builder.append("<div class=\"markdown-body\">");
         builder.append(renderedMarkdown);
         builder.append("</div>");
         builder.append("</div>");
         return builder.toString();
+    }
+
+    private String renderMarkdownHtml(UUID messageId, String markdownSource) {
+        if (markdownSource == null) {
+            return "";
+        }
+        String source = markdownSource.trim();
+        if (source.isEmpty()) {
+            return "";
+        }
+        String rendered = markdownRenderer.render(source);
+        if (rendered.isBlank()) {
+            return "";
+        }
+        return buildMarkdownHtml(messageId, rendered);
     }
 
     private String escapeHtml(String input) {
@@ -212,9 +216,8 @@ public class ChatService {
         return input.replaceAll("<[^>]+>", "");
     }
 
-    public Mono<byte[]> loadBuildGradle(String sessionId, UUID messageId) {
+    public Optional<byte[]> loadBuildGradle(String sessionId, UUID messageId) {
         ChatSession session = sessionRegistry.getOrCreate(sessionId);
-        return Mono.justOrEmpty(session.findBuildGradle(messageId))
-                .map(content -> content.getBytes(StandardCharsets.UTF_8));
+        return session.findBuildGradle(messageId).map(content -> content.getBytes(StandardCharsets.UTF_8));
     }
 }
