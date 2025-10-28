@@ -1,18 +1,16 @@
 package ch.so.agi.gretl.copilot.model;
 
-import java.time.Duration;
-import org.springframework.ai.chat.model.ChatModel;
+import java.util.List;
+
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Component;
-
-import reactor.core.publisher.Flux;
 
 @Component
 @ConditionalOnMissingBean(CopilotModelClient.class)
 public class MockCopilotModelClient implements CopilotModelClient {
 
     @Override
-    public Flux<CopilotStreamSegment> streamResponse(CopilotPrompt prompt) {
+    public List<CopilotStreamSegment> generateResponse(CopilotPrompt prompt) {
         String explanation = """
                 ## Beschreibung
                 Beispielantwort aus dem Mock-Modell: Importiert ein INTERLIS-Transferfile nach PostGIS inklusive kurzer Erläuterung.
@@ -50,7 +48,6 @@ public class MockCopilotModelClient implements CopilotModelClient {
 
         CopilotStreamSegment linksSegment = new CopilotStreamSegment(CopilotStreamSegment.SegmentType.LINKS, "");
 
-        return Flux.concat(Flux.just(textSegment).delayElements(Duration.ofMillis(120)), Flux.just(codeSegment),
-                Flux.just(linksSegment));
+        return List.of(textSegment, codeSegment, linksSegment);
     }
 }

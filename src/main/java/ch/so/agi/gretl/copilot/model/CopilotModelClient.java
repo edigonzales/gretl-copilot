@@ -1,7 +1,7 @@
 package ch.so.agi.gretl.copilot.model;
 
-import reactor.core.publisher.Flux;
+import java.util.List;
 
 public interface CopilotModelClient {
-    Flux<CopilotStreamSegment> streamResponse(CopilotPrompt prompt);
+    List<CopilotStreamSegment> generateResponse(CopilotPrompt prompt);
 }
