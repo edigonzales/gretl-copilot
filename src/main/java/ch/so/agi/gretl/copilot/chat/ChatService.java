@@ -3,10 +3,12 @@ package ch.so.agi.gretl.copilot.chat;
 import java.nio.charset.StandardCharsets;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
+
+import gg.jte.Content;
 
 import ch.so.agi.gretl.copilot.intent.IntentClassification;
 import ch.so.agi.gretl.copilot.intent.IntentClassifier;
@@ -20,9 +22,6 @@ import ch.so.agi.gretl.copilot.session.ChatMessage;
 import ch.so.agi.gretl.copilot.session.ChatRole;
 import ch.so.agi.gretl.copilot.session.ChatSession;
 import ch.so.agi.gretl.copilot.session.ChatSessionRegistry;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
 @Service
 public class ChatService {
     private final ChatSessionRegistry sessionRegistry;
@@ -50,7 +49,7 @@ public class ChatService {
         return assistantPlaceholder.getId();
     }
 
-    public Flux<ServerSentEvent<String>> streamAssistantResponse(String sessionId, UUID messageId) {
+    public AssistantResponse generateAssistantResponse(String sessionId, UUID messageId) {
         ChatSession session = sessionRegistry.getOrCreate(sessionId);
         ChatMessage assistantMessage = session.findMessage(messageId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown assistant message"));
@@ -60,88 +59,73 @@ public class ChatService {
         String userMessage = messageIndex > 0 ? messages.get(messageIndex - 1).getContent() : "";
 
         IntentClassification classification = intentClassifier.classify(userMessage);
-        System.out.println(classification.allLabels());
-        System.out.println("******* 1");
         RetrievalResult retrievalResult = retrievalService.retrieve(userMessage, classification);
-        System.out.println("******* 2");
         CopilotPrompt prompt = new CopilotPrompt(userMessage, classification, retrievalResult.documents());
 
-        return modelClient.streamResponse(prompt)
-                .concatMap(segment -> mapSegment(sessionId, messageId, session, assistantMessage, retrievalResult, segment))
-                .concatWith(Mono.just(toCompleteEvent()));
+        List<CopilotStreamSegment> segments = modelClient.generateResponse(prompt);
+
+        StringBuilder markdownSource = new StringBuilder();
+        String codeHtml = "";
+        String linksHtml = "";
+
+        for (CopilotStreamSegment segment : segments) {
+            switch (segment.type()) {
+            case TEXT -> {
+                String text = segment.content().strip();
+                if (!text.isEmpty()) {
+                    if (!assistantMessage.getContent().isBlank()) {
+                        assistantMessage.appendContent("\n\n");
+                    }
+                    assistantMessage.appendContent(text);
+                    if (markdownSource.length() > 0) {
+                        markdownSource.append("\n\n");
+                    }
+                    markdownSource.append(text);
+                }
+            }
+            case CODE_BLOCK -> {
+                String code = segment.content();
+                session.registerBuildGradle(messageId, code);
+                assistantMessage.appendContent("\n\n```gradle\n" + code + "\n```");
+                String codeId = "code-" + messageId;
+                codeHtml = buildCodeBlockHtml(sessionId, messageId, codeId, code);
+            }
+            case LINKS -> {
+                linksHtml = buildLinksHtml(retrievalResult.documents());
+                String plainLinks = stripHtmlTags(linksHtml);
+                if (!plainLinks.isBlank()) {
+                    if (!assistantMessage.getContent().isBlank()) {
+                        assistantMessage.appendContent("\n\n");
+                    }
+                    assistantMessage.appendContent(plainLinks);
+                    if (markdownSource.length() > 0) {
+                        markdownSource.append("\n\n");
+                    }
+                    markdownSource.append(plainLinks);
+                }
+            }
+            }
+        }
+
+        String markdownHtml = "";
+        if (markdownSource.length() > 0) {
+            markdownHtml = renderMarkdownHtml(messageId, markdownSource.toString());
+        }
+
+        Content markdownContent = toContent(markdownHtml);
+        Content codeContent = toContent(codeHtml);
+        Content linksContent = toContent(linksHtml);
+
+        return new AssistantResponse(markdownContent, codeContent, linksContent);
     }
 
-    private Flux<ServerSentEvent<String>> mapSegment(String sessionId, UUID messageId, ChatSession session,
-            ChatMessage assistantMessage, RetrievalResult retrievalResult, CopilotStreamSegment segment) {
-        return switch (segment.type()) {
-//        case TEXT -> {
-//            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
-//            assistantMessage.appendContent(segment.content());
-//            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
-//            if (markdownHtml.isEmpty()) {
-//                yield Flux.empty();
-//            }
-//            yield Flux.just(toMessageEvent(markdownHtml));
-//        }
-//        case CODE_BLOCK -> {
-//            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
-//            session.registerBuildGradle(messageId, segment.content());
-//            assistantMessage.appendContent("\n\n```gradle\n" + segment.content() + "\n```");
-//            String codeId = "code-" + messageId;
-//            String codeHtml = buildCodeBlockHtml(sessionId, messageId, codeId, segment.content());
-//            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
-//            if (markdownHtml.isEmpty()) {
-//                yield Flux.just(toMessageEvent(codeHtml));
-//            }
-//            yield Flux.just(toMessageEvent(codeHtml), toMessageEvent(markdownHtml));
-//        }
-//        case LINKS -> {
-//            String linksHtml = buildLinksHtml(retrievalResult.documents());
-//            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
-//            assistantMessage.appendContent("\n\n" + stripHtmlTags(linksHtml));
-//            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
-//            if (markdownHtml.isEmpty()) {
-//                yield Flux.just(toMessageEvent(linksHtml));
-//            }
-//            yield Flux.just(toMessageEvent(linksHtml), toMessageEvent(markdownHtml));
-//        }
-        case TEXT -> {
-            String token = segment.content();
-            System.out.println("token: " + token);
-            assistantMessage.appendContent(token + " ");
-            yield Flux.just(toMessageEvent(
-                    "<span class=\"assistant-token\">" + escapeHtml(token) + " </span>"));
-        }
-        case CODE_BLOCK -> {
-            session.registerBuildGradle(messageId, segment.content());
-            assistantMessage.appendContent("\n\n```gradle\n" + segment.content() + "\n```");
-            String codeId = "code-" + messageId;
-            String codeHtml = buildCodeBlockHtml(sessionId, messageId, codeId, segment.content());
-            yield Flux.just(toMessageEvent(codeHtml));
-        }
-        case LINKS -> {
-            String linksHtml = buildLinksHtml(retrievalResult.documents());
-            assistantMessage.appendContent("\n\n" + stripHtmlTags(linksHtml));
-            yield Flux.just(toMessageEvent(linksHtml));
-        }
-        };
-    }
-
-    private String renderMarkdownHtml(UUID messageId, ChatMessage assistantMessage, boolean createElement) {
-        String rendered = markdownRenderer.render(assistantMessage.getContent());
+    private String renderMarkdownHtml(UUID messageId, String markdownSource) {
+        String rendered = markdownRenderer.render(markdownSource);
         if (rendered.isBlank()) {
             return "";
         }
 
-        return buildMarkdownHtml(messageId, rendered, createElement);
-    }
-
-    private ServerSentEvent<String> toMessageEvent(String html) {
-        return ServerSentEvent.<String>builder().event("message").data(html).build();
-    }
-
-    private ServerSentEvent<String> toCompleteEvent() {
-        return ServerSentEvent.<String>builder().event("complete").data("").build();
+        return buildMarkdownHtml(messageId, rendered);
     }
 
     private String buildCodeBlockHtml(String sessionId, UUID messageId, String codeId, String content) {
@@ -179,12 +163,10 @@ public class ChatService {
         return builder.toString();
     }
 
-    private String buildMarkdownHtml(UUID messageId, String renderedMarkdown, boolean createElement) {
+    private String buildMarkdownHtml(UUID messageId, String renderedMarkdown) {
         StringBuilder builder = new StringBuilder();
-        builder.append("<div id=\"assistant-markdown-").append(messageId).append("\" class=\"assistant-body__markdown\"");
-        if (!createElement) {
-            builder.append(" hx-swap-oob=\"innerHTML\"");
-        }
+        builder.append("<div id=\"assistant-markdown-").append(messageId)
+                .append("\" class=\"assistant-body__markdown\"");
         builder.append(">");
         builder.append("<div class=\"markdown-body\">");
         builder.append(renderedMarkdown);
@@ -212,9 +194,16 @@ public class ChatService {
         return input.replaceAll("<[^>]+>", "");
     }
 
-    public Mono<byte[]> loadBuildGradle(String sessionId, UUID messageId) {
+    public Optional<byte[]> loadBuildGradle(String sessionId, UUID messageId) {
         ChatSession session = sessionRegistry.getOrCreate(sessionId);
-        return Mono.justOrEmpty(session.findBuildGradle(messageId))
+        return session.findBuildGradle(messageId)
                 .map(content -> content.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private Content toContent(String html) {
+        if (html == null || html.isBlank()) {
+            return null;
+        }
+        return output -> output.writeContent(html);
     }
 }

@@ -10,7 +10,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/chat.css">
     <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.7/dist/htmx.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.4/sse.min.js"></script>
 </head>
 <body>
     <main class="app-shell">
@@ -71,48 +70,6 @@
             if (event.detail.target && event.detail.target.id === 'conversation') {
                 event.detail.target.scrollTop = event.detail.target.scrollHeight;
             }
-        });
-
-        document.body.addEventListener('htmx:sseMessage', function (event) {
-            if (!event.detail) {
-                return;
-            }
-
-            var messageType = event.detail.type;
-            var container = event.target;
-
-            if (messageType === 'message' && container) {
-                var assistantBody = container.querySelector('.assistant-body');
-                if (assistantBody) {
-                    var indicator = assistantBody.previousElementSibling;
-                    if (indicator && indicator.classList.contains('typing-indicator')) {
-                        indicator.remove();
-                    }
-                }
-            }
-
-            if (messageType === 'complete' && container) {
-                container.removeAttribute('sse-connect');
-                container.removeAttribute('data-sse-connect');
-                container.removeAttribute('sse-close');
-                container.removeAttribute('data-sse-close');
-            }
-
-            var conversation = document.getElementById('conversation');
-            if (conversation) {
-                conversation.scrollTop = conversation.scrollHeight;
-            }
-        });
-
-        document.body.addEventListener('htmx:sseClose', function (event) {
-            var container = event.target;
-            if (!container) {
-                return;
-            }
-            container.removeAttribute('sse-connect');
-            container.removeAttribute('data-sse-connect');
-            container.removeAttribute('sse-close');
-            container.removeAttribute('data-sse-close');
         });
 
         document.addEventListener('click', function (event) {
