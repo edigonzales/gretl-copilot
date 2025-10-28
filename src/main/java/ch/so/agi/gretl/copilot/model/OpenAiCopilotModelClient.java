@@ -13,8 +13,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import ch.so.agi.gretl.copilot.prompt.CopilotPromptBuilder;
-import reactor.core.publisher.Flux;
-
 @Component
 @ConditionalOnProperty(name = "gretl.copilot.model.provider", havingValue = "openai", matchIfMissing = false)
 public class OpenAiCopilotModelClient implements CopilotModelClient {
@@ -32,9 +30,9 @@ public class OpenAiCopilotModelClient implements CopilotModelClient {
     }
 
     @Override
-    public Flux<CopilotStreamSegment> streamResponse(CopilotPrompt prompt) {
+    public List<CopilotStreamSegment> generateResponse(CopilotPrompt prompt) {
         if (log.isDebugEnabled()) {
-            log.debug("streamResponse() building prompt for intent {} with {} documents",
+            log.debug("generateResponse() building prompt for intent {} with {} documents",
                     prompt.classification() != null ? prompt.classification().label() : "<none>",
                     prompt.documents() == null ? 0 : prompt.documents().size());
         }
@@ -53,14 +51,14 @@ public class OpenAiCopilotModelClient implements CopilotModelClient {
             }
         } catch (Exception ex) {
             log.error("Chat model invocation failed", ex);
-            return Flux.error(ex);
+            throw new IllegalStateException("Chat model invocation failed", ex);
         }
 
         List<CopilotStreamSegment> segments = toSegments(content, prompt);
         if (log.isDebugEnabled()) {
-            log.debug("streamResponse() produced {} segments", segments.size());
+            log.debug("generateResponse() produced {} segments", segments.size());
         }
-        return Flux.fromIterable(segments);
+        return segments;
     }
 
     private List<CopilotStreamSegment> toSegments(String rawContent, CopilotPrompt prompt) {
