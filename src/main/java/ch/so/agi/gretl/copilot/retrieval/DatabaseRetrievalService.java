@@ -18,6 +18,7 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -29,6 +30,7 @@ import com.pgvector.PGvector;
 import ch.so.agi.gretl.copilot.intent.IntentClassification;
 
 @Component
+@ConditionalOnProperty(name = "spring.ai.openai.embedding.options.model", havingValue = "text-embedding-3-large", matchIfMissing = false)
 public class DatabaseRetrievalService implements RetrievalService {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseRetrievalService.class);
@@ -135,6 +137,10 @@ public class DatabaseRetrievalService implements RetrievalService {
     public RetrievalResult retrieve(String userMessage, IntentClassification classification) {
         log.debug("Fetch documents from database");
         float[] queryVector = embedQuery(userMessage);
+        
+        System.out.println("****** 1.5");
+        System.out.println(queryVector.length);
+        
         List<DatabaseDocument> candidates = fetchCandidates(queryVector, userMessage, properties.getAlpha(),
                 properties.getCandidateLimit());
         log.debug("Candidates total: {}", candidates.size());
@@ -153,6 +159,8 @@ public class DatabaseRetrievalService implements RetrievalService {
     private float[] embedQuery(String userMessage) {
         try {
             Document document = new Document(userMessage);
+            System.out.println("*****" + embeddingModel.toString());
+            System.out.println("*****" + embeddingModel.dimensions());
             return embeddingModel.embed(document);
         } catch (Exception ex) {
             log.warn("Failed to generate embedding, falling back to zero vector", ex);

@@ -74,36 +74,55 @@ public class ChatService {
     private Flux<ServerSentEvent<String>> mapSegment(String sessionId, UUID messageId, ChatSession session,
             ChatMessage assistantMessage, RetrievalResult retrievalResult, CopilotStreamSegment segment) {
         return switch (segment.type()) {
+//        case TEXT -> {
+//            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
+//            assistantMessage.appendContent(segment.content());
+//            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
+//            if (markdownHtml.isEmpty()) {
+//                yield Flux.empty();
+//            }
+//            yield Flux.just(toMessageEvent(markdownHtml));
+//        }
+//        case CODE_BLOCK -> {
+//            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
+//            session.registerBuildGradle(messageId, segment.content());
+//            assistantMessage.appendContent("\n\n```gradle\n" + segment.content() + "\n```");
+//            String codeId = "code-" + messageId;
+//            String codeHtml = buildCodeBlockHtml(sessionId, messageId, codeId, segment.content());
+//            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
+//            if (markdownHtml.isEmpty()) {
+//                yield Flux.just(toMessageEvent(codeHtml));
+//            }
+//            yield Flux.just(toMessageEvent(codeHtml), toMessageEvent(markdownHtml));
+//        }
+//        case LINKS -> {
+//            String linksHtml = buildLinksHtml(retrievalResult.documents());
+//            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
+//            assistantMessage.appendContent("\n\n" + stripHtmlTags(linksHtml));
+//            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
+//            if (markdownHtml.isEmpty()) {
+//                yield Flux.just(toMessageEvent(linksHtml));
+//            }
+//            yield Flux.just(toMessageEvent(linksHtml), toMessageEvent(markdownHtml));
+//        }
         case TEXT -> {
-            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
-            assistantMessage.appendContent(segment.content());
-            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
-            if (markdownHtml.isEmpty()) {
-                yield Flux.empty();
-            }
-            yield Flux.just(toMessageEvent(markdownHtml));
+            String token = segment.content();
+            System.out.println("token: " + token);
+            assistantMessage.appendContent(token + " ");
+            yield Flux.just(toMessageEvent(
+                    "<span class=\"assistant-token\">" + escapeHtml(token) + " </span>"));
         }
         case CODE_BLOCK -> {
-            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
             session.registerBuildGradle(messageId, segment.content());
             assistantMessage.appendContent("\n\n```gradle\n" + segment.content() + "\n```");
             String codeId = "code-" + messageId;
             String codeHtml = buildCodeBlockHtml(sessionId, messageId, codeId, segment.content());
-            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
-            if (markdownHtml.isEmpty()) {
-                yield Flux.just(toMessageEvent(codeHtml));
-            }
-            yield Flux.just(toMessageEvent(codeHtml), toMessageEvent(markdownHtml));
+            yield Flux.just(toMessageEvent(codeHtml));
         }
         case LINKS -> {
             String linksHtml = buildLinksHtml(retrievalResult.documents());
-            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
             assistantMessage.appendContent("\n\n" + stripHtmlTags(linksHtml));
-            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
-            if (markdownHtml.isEmpty()) {
-                yield Flux.just(toMessageEvent(linksHtml));
-            }
-            yield Flux.just(toMessageEvent(linksHtml), toMessageEvent(markdownHtml));
+            yield Flux.just(toMessageEvent(linksHtml));
         }
         };
     }

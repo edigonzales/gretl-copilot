@@ -296,7 +296,7 @@ body {
 }
 
 .assistant-body__markdown table {
-    width: 100%;
+    width: 120%;
     border-collapse: collapse;
     margin: 1em 0;
     font-size: 0.95rem;
