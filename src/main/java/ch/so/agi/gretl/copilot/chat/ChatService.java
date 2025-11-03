@@ -74,56 +74,56 @@ public class ChatService {
     private Flux<ServerSentEvent<String>> mapSegment(String sessionId, UUID messageId, ChatSession session,
             ChatMessage assistantMessage, RetrievalResult retrievalResult, CopilotStreamSegment segment) {
         return switch (segment.type()) {
+        case TEXT -> {
+            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
+            assistantMessage.appendContent(segment.content());
+            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
+            if (markdownHtml.isEmpty()) {
+                yield Flux.empty();
+            }
+            yield Flux.just(toMessageEvent(markdownHtml));
+        }
+        case CODE_BLOCK -> {
+            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
+            session.registerBuildGradle(messageId, segment.content());            
+            String codeId = "code-" + messageId;
+            String codeHtml = buildCodeBlockHtml(sessionId, messageId, codeId, segment.content());
+            assistantMessage.appendContent("\n\n" + codeHtml + "\n\n");
+            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
+            if (markdownHtml.isEmpty()) {
+                yield Flux.empty();
+            }
+            yield Flux.just(toMessageEvent(markdownHtml));
+        }
+        case LINKS -> {
+            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
+            String linksHtml = buildLinksHtml(retrievalResult.documents());
+            assistantMessage.appendContent("\n\n" + linksHtml + "\n\n");
+            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
+            if (markdownHtml.isEmpty()) {
+                yield Flux.empty();
+            }
+            yield Flux.just(toMessageEvent(markdownHtml));
+        }
 //        case TEXT -> {
-//            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
-//            assistantMessage.appendContent(segment.content());
-//            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
-//            if (markdownHtml.isEmpty()) {
-//                yield Flux.empty();
-//            }
-//            yield Flux.just(toMessageEvent(markdownHtml));
+//            String token = segment.content();
+//            System.out.println("token: " + token);
+//            assistantMessage.appendContent(token + " ");
+//            yield Flux.just(toMessageEvent(
+//                    "<span class=\"assistant-token\">" + escapeHtml(token) + " </span>"));
 //        }
 //        case CODE_BLOCK -> {
-//            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
 //            session.registerBuildGradle(messageId, segment.content());
 //            assistantMessage.appendContent("\n\n```gradle\n" + segment.content() + "\n```");
 //            String codeId = "code-" + messageId;
 //            String codeHtml = buildCodeBlockHtml(sessionId, messageId, codeId, segment.content());
-//            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
-//            if (markdownHtml.isEmpty()) {
-//                yield Flux.just(toMessageEvent(codeHtml));
-//            }
-//            yield Flux.just(toMessageEvent(codeHtml), toMessageEvent(markdownHtml));
+//            yield Flux.just(toMessageEvent(codeHtml));
 //        }
 //        case LINKS -> {
 //            String linksHtml = buildLinksHtml(retrievalResult.documents());
-//            boolean wasEmptyBefore = assistantMessage.getContent().isBlank();
 //            assistantMessage.appendContent("\n\n" + stripHtmlTags(linksHtml));
-//            String markdownHtml = renderMarkdownHtml(messageId, assistantMessage, wasEmptyBefore);
-//            if (markdownHtml.isEmpty()) {
-//                yield Flux.just(toMessageEvent(linksHtml));
-//            }
-//            yield Flux.just(toMessageEvent(linksHtml), toMessageEvent(markdownHtml));
+//            yield Flux.just(toMessageEvent(linksHtml));
 //        }
-        case TEXT -> {
-            String token = segment.content();
-            System.out.println("token: " + token);
-            assistantMessage.appendContent(token + " ");
-            yield Flux.just(toMessageEvent(
-                    "<span class=\"assistant-token\">" + escapeHtml(token) + " </span>"));
-        }
-        case CODE_BLOCK -> {
-            session.registerBuildGradle(messageId, segment.content());
-            assistantMessage.appendContent("\n\n```gradle\n" + segment.content() + "\n```");
-            String codeId = "code-" + messageId;
-            String codeHtml = buildCodeBlockHtml(sessionId, messageId, codeId, segment.content());
-            yield Flux.just(toMessageEvent(codeHtml));
-        }
-        case LINKS -> {
-            String linksHtml = buildLinksHtml(retrievalResult.documents());
-            assistantMessage.appendContent("\n\n" + stripHtmlTags(linksHtml));
-            yield Flux.just(toMessageEvent(linksHtml));
-        }
         };
     }
 
@@ -192,7 +192,7 @@ public class ChatService {
         builder.append("</div>");
         return builder.toString();
     }
-
+    
     private String escapeHtml(String input) {
         StringBuilder sb = new StringBuilder();
         input.chars().forEach(ch -> {
